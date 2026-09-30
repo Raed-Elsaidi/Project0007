@@ -617,11 +617,11 @@ export default function StaffPortalWelcome({
               </div>
             ) : null}
 
-            {institution.name_line_2 ? (
+            {institutionLine2 ? (
               <div className="institution-line">{institutionLine2}</div>
             ) : null}
 
-            {institution.name_line_3 ? (
+            {institutionLine3 ? (
               <div className="institution-line">{institutionLine3}</div>
             ) : null}
           </div>
