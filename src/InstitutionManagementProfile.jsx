@@ -130,6 +130,7 @@ export default function InstitutionManagementProfile({
     }
 
     window.localStorage.setItem("currentInstitutionId", String(resolvedId));
+    window.localStorage.setItem("currentInstitutionData", JSON.stringify(data));
 
     setForm({
       name: data?.name ?? data?.name_line_1 ?? "",
@@ -250,6 +251,9 @@ export default function InstitutionManagementProfile({
       setSaving(false);
       return;
     }
+
+    window.localStorage.setItem("currentInstitutionId", String(data.id));
+    window.localStorage.setItem("currentInstitutionData", JSON.stringify(data));
 
     setMessage("تم حفظ بيانات المؤسسة بنجاح.");
     setSaving(false);

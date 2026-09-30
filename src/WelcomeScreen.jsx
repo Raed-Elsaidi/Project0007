@@ -22,8 +22,12 @@ export default function StaffPortalWelcome({
 
   const institution = useInstitution(supabase);
 
+  // بيانات المؤسسة تأتي من نفس سجل شاشة "إدارة المؤسسة".
+  // إذا لم تتوفر البيانات بعد، نستخدم قيمًا آمنة لمنع الشاشة السوداء.
   const currentInstitutionName = institutionName(institution);
   const currentInstitutionLogo = institutionLogo(institution) || ministryLogo;
+  const institutionLine2 = institution?.name_line_2 || "";
+  const institutionLine3 = institution?.name_line_3 || "";
 
   React.useEffect(() => {
     const contactModalEscapeHandler = (event) => {
@@ -614,11 +618,11 @@ export default function StaffPortalWelcome({
             ) : null}
 
             {institution.name_line_2 ? (
-              <div className="institution-line">{institution.name_line_2}</div>
+              <div className="institution-line">{institutionLine2}</div>
             ) : null}
 
             {institution.name_line_3 ? (
-              <div className="institution-line">{institution.name_line_3}</div>
+              <div className="institution-line">{institutionLine3}</div>
             ) : null}
           </div>
         </header>
