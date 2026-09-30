@@ -48,14 +48,20 @@ export default function StaffPortalWelcome({
 }) {
   const [showContactModal, setShowContactModal] = React.useState(false);
 
-  const institution = useInstitution(supabase);
+  // نفس البيانات التي تحفظها شاشة InstitutionManagementProfile.
+  const institution = useInstitutionManagementProfile();
 
-  // بيانات المؤسسة تأتي من نفس سجل شاشة "إدارة المؤسسة".
-  // إذا لم تتوفر البيانات بعد، نستخدم قيمًا آمنة لمنع الشاشة السوداء.
-  const currentInstitutionName = institutionName(institution);
-  const currentInstitutionLogo = institutionLogo(institution) || ministryLogo;
-  const institutionLine2 = institution?.name_line_2 || "";
-  const institutionLine3 = institution?.name_line_3 || "";
+  const currentInstitutionName =
+    institution?.name_line_1 ||
+    institution?.name ||
+    institution?.official_name ||
+    '';
+
+  const currentInstitutionLogo =
+    institution?.logo_url || ministryLogo;
+
+  const institutionLine2 = institution?.name_line_2 || '';
+  const institutionLine3 = institution?.name_line_3 || '';
 
   React.useEffect(() => {
     const contactModalEscapeHandler = (event) => {
