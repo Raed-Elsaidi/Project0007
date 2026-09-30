@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import ministryLogo from './logo.png';
 import raedLogo from './raed-logo1.jpg';
 import programLogo from './program_logo.png';
-import { useInstitution, institutionName, institutionLogo } from './institution';
 import { FaEnvelope, FaFacebookF, FaLinkedinIn, FaWhatsapp } from 'react-icons/fa';
 
 import AcademicManager from './AcademicManager';
@@ -27,6 +26,35 @@ import EmployeeMessages from './EmployeeMessages';
 import StudentSupportMessages from './StudentSupportMessages';
 import Notes from './Notes';
 import InstitutionManagementProfile from './InstitutionManagementProfile';
+
+function readInstitutionManagementProfile() {
+  try {
+    const raw = window.localStorage.getItem('currentInstitutionData');
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    return data && typeof data === 'object' ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+function useInstitutionManagementProfile() {
+  const [institution, setInstitution] = React.useState(() =>
+    readInstitutionManagementProfile()
+  );
+
+  React.useEffect(() => {
+    const refresh = () => setInstitution(readInstitutionManagementProfile());
+    refresh();
+
+    // InstitutionManagementProfile stores the latest saved profile in localStorage.
+    const timer = window.setInterval(refresh, 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  return institution;
+}
+
 import InstitutionManagement from './InstitutionManagement';
 import BackupManager from './BackupManager';
 import { playMenuHoverSound } from './soundUtils';
@@ -115,7 +143,7 @@ async function loadEmployeePermissions(supabase, jobId) {
 
 // مكون شاشة تسجيل الدخول للموظفين/المشرفين
 function EmployeeLogin({ supabase, onLoginSuccess, onBack }) {
-  const institution = useInstitution(supabase);
+  const institution = useInstitutionManagementProfile();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -309,8 +337,10 @@ function EmployeeLogin({ supabase, onLoginSuccess, onBack }) {
   };
 
   const currentYear = new Date().getFullYear();
-  const currentInstitutionName = institutionName(institution) || 'اسم المؤسسة';
-  const currentInstitutionLogo = institutionLogo(institution) || ministryLogo;
+  const currentInstitutionName = institution?.name_line_1 || institution?.name || institution?.official_name || '';
+  const institutionLine2 = institution?.name_line_2 || '';
+  const institutionLine3 = institution?.name_line_3 || '';
+  const currentInstitutionLogo = institution?.logo_url || ministryLogo;
 
   return (
     <div className="staff-login-only-page" dir="rtl">
@@ -529,12 +559,12 @@ function EmployeeLogin({ supabase, onLoginSuccess, onBack }) {
             </div>
           ) : null}
 
-          {institution.name_line_2 ? (
-            <div className="institution-line">{institution.name_line_2}</div>
+          {institutionLine2 ? (
+            <div className="institution-line">{institutionLine2}</div>
           ) : null}
 
-          {institution.name_line_3 ? (
-            <div className="institution-line">{institution.name_line_3}</div>
+          {institutionLine3 ? (
+            <div className="institution-line">{institutionLine3}</div>
           ) : null}
         </div>
       </header>
@@ -887,7 +917,7 @@ const restrictedStyles = {
 };
 
 export default function AdminPanel({ supabase, styles, showAlertMessage, onLogout, user, onGoHome }) {
-  const institution = useInstitution(supabase);
+  const institution = useInstitutionManagementProfile();
   // AdminLogin هي الشاشة الثانية، وتظهر بعد الضغط على دخول الموظفين من WelcomeScreen.
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [showWelcome, setShowWelcome] = useState(false);
@@ -1263,9 +1293,9 @@ export default function AdminPanel({ supabase, styles, showAlertMessage, onLogou
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', borderTop: '1px solid #334155', paddingTop: '10px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-               <img src={institutionLogo(institution) || ministryLogo} alt="Logo" style={{ width: '45px', height: '45px', objectFit: 'cover', borderRadius: '50%' }} />
+               <img src={institution?.logo_url || ministryLogo} alt="Logo" style={{ width: '45px', height: '45px', objectFit: 'cover', borderRadius: '50%' }} />
                <div>
-                 <h4 style={{ margin: '0', color: '#f8fafc', fontSize: '13px', fontWeight: 'bold' }}>{institutionName(institution)}</h4>
+                 <h4 style={{ margin: '0', color: '#f8fafc', fontSize: '13px', fontWeight: 'bold' }}>{(institution?.name_line_1 || institution?.name || institution?.official_name || '')}</h4>
                  <p style={{ margin: '2px 0 0 0', color: '#94a3b8', fontSize: '11px', fontWeight: 'bold' }}>
                    قسم القياس والتقويم والامتحانات - امتحان إتمام شهادة الدراسة الثانوية العامة - {currentServerYear}
                  </p>

@@ -10,8 +10,36 @@ import {
 } from 'react-icons/fa6';
 import raedLogo from './raed-logo1.jpg';
 import ministryLogo from './logo.png';
-import { useInstitution, institutionName, institutionLogo } from './institution';
 import { supabase } from './supabaseClient';
+
+function readInstitutionManagementProfile() {
+  try {
+    const raw = window.localStorage.getItem('currentInstitutionData');
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    return data && typeof data === 'object' ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+function useInstitutionManagementProfile() {
+  const [institution, setInstitution] = React.useState(() =>
+    readInstitutionManagementProfile()
+  );
+
+  React.useEffect(() => {
+    const refresh = () => setInstitution(readInstitutionManagementProfile());
+    refresh();
+
+    // InstitutionManagementProfile stores the latest saved profile in localStorage.
+    const timer = window.setInterval(refresh, 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  return institution;
+}
+
 
 export default function StaffPortalWelcome({
   onNavigateLogin,
