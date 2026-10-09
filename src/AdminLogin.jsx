@@ -1383,6 +1383,7 @@ export default function AdminPanel({ supabase, styles, showAlertMessage, onLogou
           className={`admin-sidebar ${mobileSidebarOpen ? 'mobile-sidebar-open' : ''}`}
           style={{ width: '270px', backgroundColor: '#1e293b', borderLeft: '1px solid #334155', display: 'flex', flexDirection: 'column' }}
         >
+<<<<<<< HEAD
           <div className="sidebar-institution-brand" dir="rtl">
             <img
               src={institution?.logo_url || ministryLogo}
@@ -1403,6 +1404,8 @@ export default function AdminPanel({ supabase, styles, showAlertMessage, onLogou
               <small>{currentUser?.job_name || localStorage.getItem('currentJobName') || getRoleTitle(userRole)}</small>
             </div>
           </div>
+=======
+>>>>>>> 5188b7379e3d40e74034568164b8e0003144c9f1
           <div className="mobile-sidebar-top">
             <strong>القائمة الرئيسية</strong>
             <button
