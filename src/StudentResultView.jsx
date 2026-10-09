@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { calculateGrade12Result, getSubjectMaximum, getSubjectMinimum } from './Grade12ScoringRules';
 
 export default function StudentResultView({ supabase }) {
   const [searchQuery, setSearchQuery] = useState('');
@@ -61,114 +62,55 @@ export default function StudentResultView({ supabase }) {
     return values.find(v => v !== 0) ?? values[0] ?? 0;
   };
 
-  // دالة مساعدة لاختيار العنصر الأعلى في مجموعة مواد متشابهة
-  const chooseHighestPairSubmissions = (subsMap, keywords, subjectsMap) => {
-    const matchingEntries = Object.entries(subsMap).filter(([subId]) => {
-      const subj = subjectsMap[subId];
-      if (!subj) return false;
-      const sName = (subj.subject_name || subj.name || '').toLowerCase();
-      return keywords.some((k) => sName.includes(k.toLowerCase()));
+  // محرك موحد لقواعد الصف 12.
+  // الاختيار بين المواد الاختيارية يتم على العلامة الفعلية، وليس النسبة.
+  const calculateAdvancedResult = (studentSubs, branchName, subjectsMap, examsMap, branchId = null) => {
+    const subjectRows = Object.values(subjectsMap || {}).filter((subject) => {
+      if (branchId == null) return true;
+      const subjectBranchId = subject?.branch_id;
+      return subjectBranchId == null || String(subjectBranchId) === String(branchId);
     });
 
-    if (matchingEntries.length <= 1) return;
+    const cells = subjectRows.map((subject) => {
+      const subjectId = subject?.id;
+      const submission = studentSubs?.[String(subjectId)] || studentSubs?.[subjectId] || null;
+      const mark = submission ? scoreOfSubmission(submission) : 0;
 
-    // ترتيب تنازلي حسب العلامة لاختيار الأعلى وإلغاء الباقي من الاحتساب
-    matchingEntries.sort((a, b) => b[1].mark - a[1].mark);
-    for (let i = 1; i < matchingEntries.length; i++) {
-      const subIdToRemove = matchingEntries[i][0];
-      delete subsMap[subIdToRemove];
-    }
-  };
-
-  // دالة مطابقة قواعد احتساب المجموع والمعدل وحالة الطالب بناءً على الفرع وتوجيهاتك الـ 9
-  const calculateAdvancedResult = (studentSubs, branchName, subjectsMap, examsMap) => {
-    const subsMap = {};
-    let failedCount = 0;
-    let totalMarks = 0;
-
-    Object.values(studentSubs || {}).forEach((sub) => {
-      const exam = examsMap[String(sub.exam_id)] || {};
-      const subjectId = exam.subject_id || sub.subject_id;
-      const subject = subjectsMap[String(subjectId)] || {};
-      
-      const mark = scoreOfSubmission(sub);
-      const minMark = Number(
-        exam.min_marks ??
-        exam.minimum_mark ??
-        exam.passing_marks ??
-        subject.minimum_mark ??
-        subject.min_mark ??
-        50
-      );
-
-      subsMap[String(subjectId)] = {
+      return {
+        key: String(subjectId),
+        subject,
         mark,
-        minMark,
-        subjectId
+        min: getSubjectMinimum(subject),
+        max: getSubjectMaximum(subject),
+        submitted: Boolean(submission)
       };
     });
 
-    const bName = (branchName || '').toLowerCase();
+    // إذا لم نستطع تحديد مواد الفرع من branch_id، لا نفقد النتائج الموجودة.
+    const fallbackCells = cells.length
+      ? cells
+      : Object.entries(studentSubs || {}).map(([subjectId, sub]) => {
+          const subject = subjectsMap?.[subjectId] || {};
+          return {
+            key: String(subjectId),
+            subject,
+            mark: scoreOfSubmission(sub),
+            min: getSubjectMinimum(subject),
+            max: getSubjectMaximum(subject),
+            submitted: true
+          };
+        });
 
-    // تطبيق قواعد الاستثناء واختيار العلامة الأعلى لكل فرع
-    if (bName.includes('علمي')) {
-      chooseHighestPairSubmissions(subsMap, ['التربية الاسلامية', 'التربية الإسلامية', 'اسلامية', 'التكنولوجيا', 'تكنولوجيا'], subjectsMap);
-      chooseHighestPairSubmissions(subsMap, ['الكيمياء', 'كيمياء', 'الاحياء', 'الأحياء', 'احياء'], subjectsMap);
-    } else if (bName.includes('ادبي') || bName.includes('أدبي')) {
-      chooseHighestPairSubmissions(subsMap, ['التربية الاسلامية', 'التربية الإسلامية', 'اسلامية', 'جغرافيا'], subjectsMap);
-      chooseHighestPairSubmissions(subsMap, ['الثقافة العلمية', 'التكنولوجيا'], subjectsMap);
-    } else if (bName.includes('زراعي')) {
-      chooseHighestPairSubmissions(subsMap, ['الاحياء', 'الأحياء', 'احياء', 'رياضيات'], subjectsMap);
-      chooseHighestPairSubmissions(subsMap, ['الكيمياء', 'التربية الإسلامية', 'التربية الاسلامية', 'الاحياء'], subjectsMap);
-    } else if (bName.includes('صناعي')) {
-      chooseHighestPairSubmissions(subsMap, ['الرسم الصناعي', 'الفيزياء'], subjectsMap);
-      chooseHighestPairSubmissions(subsMap, ['التربية الاسلامية', 'التكنولوجيا'], subjectsMap);
-    } else if (bName.includes('اقتصاد منزلي')) {
-      chooseHighestPairSubmissions(subsMap, ['التكنولوجيا', 'رياضيات', 'التربية الاسلامية', 'التربية الإسلامية', 'الكيمياء'], subjectsMap);
-    } else if (bName.includes('فندقي')) {
-      chooseHighestPairSubmissions(subsMap, ['التكنولوجيا', 'رياضيات', 'التربية الاسلامية', 'التربية الإسلامية', 'السياحة'], subjectsMap);
-    } else if (bName.includes('ريادة') || bName.includes('اعمال')) {
-      chooseHighestPairSubmissions(subsMap, ['المحاسبة', 'المشاريع الصغيرة'], subjectsMap);
-      chooseHighestPairSubmissions(subsMap, ['التربية الاسلامية', 'التكنولوجيا'], subjectsMap);
-    } else if (bName.includes('تكنولوجي')) {
-      chooseHighestPairSubmissions(subsMap, ['الاتصالات والالكترونيات', 'الريادة والاعمال'], subjectsMap);
-      chooseHighestPairSubmissions(subsMap, ['التربية الاسلامية', 'الثقافة العلمية'], subjectsMap);
-    } else if (bName.includes('شرعي')) {
-      chooseHighestPairSubmissions(subsMap, ['الفقه الاسلامي', 'التاريخ'], subjectsMap);
-      chooseHighestPairSubmissions(subsMap, ['الجغرافيا', 'التكنولوجيا'], subjectsMap);
-    }
-
-    const calculatedSelected = Object.values(subsMap);
-    
-    // المجموع يتم جمعه من 7 مواد فقط حسب الشروط وتتم القسمة على 700 للمعدل
-    calculatedSelected.forEach((item) => {
-      totalMarks += item.mark;
-      if (item.mark < item.minMark) {
-        failedCount++;
-      }
-    });
-
-    const percentage = (totalMarks / 700) * 100;
-
-    // تحديد النتيجة وحالة الطالب بدقة
-    let status = 'ناجح';
-    let isPassed = true;
-
-    if (failedCount >= 1 && failedCount <= 4) {
-      status = 'مكمل (إكمال)';
-      isPassed = false;
-    } else if (failedCount > 4 || percentage < 50) {
-      status = 'راسب';
-      isPassed = false;
-    }
+    const calc = calculateGrade12Result(branchName, fallbackCells);
 
     return {
-      totalMarks,
-      maximumMarks: 700,
-      percentage: Number.isFinite(percentage) ? percentage : 0,
-      status,
-      failedCount,
-      isPassed
+      totalMarks: calc.total,
+      maximumMarks: calc.maximumTotal,
+      percentage: calc.percentage,
+      status: calc.status,
+      failedCount: calc.failedSubjects,
+      isPassed: calc.passed,
+      selectedSubjects: calc.selectedCells
     };
   };
 
@@ -245,7 +187,7 @@ export default function StudentResultView({ supabase }) {
         const branchId = student.branch_id ?? student.branch;
         const branchName = branchMap[String(branchId)] || student.branch_name || student.branch || 'غير محدد';
 
-        const calc = calculateAdvancedResult(subsMap, branchName, subjectsMap, examsMap);
+        const calc = calculateAdvancedResult(subsMap, branchName, subjectsMap, examsMap, branchId);
 
         // شرط التنافس على الأوائل: أن يكون الطالب ناجحاً في جميع المواد
         if (calc.status !== 'ناجح') return;
@@ -363,13 +305,14 @@ export default function StudentResultView({ supabase }) {
         return;
       }
 
-      const [submissionsRes, branchesRes, directoratesRes, schoolsRes, examsRes, subjectsRes] = await Promise.all([
+      const [submissionsRes, branchesRes, directoratesRes, schoolsRes, examsRes, subjectsRes, finalResultsRes] = await Promise.all([
         supabase.from('submissions').select('*').eq('student_id', student.id).catch(() => ({ data: [] })),
         supabase.from('branches').select('*').catch(() => ({ data: [] })),
         supabase.from('directorates').select('*').catch(() => ({ data: [] })),
         supabase.from('schools').select('*').catch(() => ({ data: [] })),
         supabase.from('exams').select('*').catch(() => ({ data: [] })),
-        supabase.from('subjects').select('*').catch(() => ({ data: [] }))
+        supabase.from('subjects').select('*').catch(() => ({ data: [] })),
+        supabase.from('student_final_results').select('*').eq('student_id', student.id).eq('cycle_id', 1).maybeSingle().catch(() => ({ data: null }))
       ]);
 
       const submissions = submissionsRes.data || [];
@@ -392,6 +335,8 @@ export default function StudentResultView({ supabase }) {
       });
 
       const branchName = branch?.branch_name || branch?.name || student.branch_name || student.branch || '';
+      const savedFinalResult = finalResultsRes?.data || null;
+
       const calcResult = student.__archived
         ? {
             totalMarks: Number(student.final_total ?? student.total_score ?? student.final_score ?? 0) || 0,
@@ -401,9 +346,18 @@ export default function StudentResultView({ supabase }) {
             failedCount: 0,
             isPassed: String(student.final_result || student.result || '').startsWith('ناجح')
           }
-        : calculateAdvancedResult(studentSubsMap, branchName, subjectsMap, examsMap);
+        : savedFinalResult
+          ? {
+              totalMarks: Number(savedFinalResult.total_score) || 0,
+              maximumMarks: Number(savedFinalResult.maximum_score) || 700,
+              percentage: Number(savedFinalResult.average) || 0,
+              status: savedFinalResult.result_status || 'غير محدد',
+              failedCount: Number(savedFinalResult.failed_subjects) || 0,
+              isPassed: savedFinalResult.result_status === 'ناجح'
+            }
+          : calculateAdvancedResult(studentSubsMap, branchName, subjectsMap, examsMap, student.branch_id);
 
-      if (!student.__archived && student.id) {
+      if (!student.__archived && student.id && !savedFinalResult) {
         const payload = {
           final_total: Number(calcResult.totalMarks) || 0,
           final_average: Number(calcResult.percentage) || 0,

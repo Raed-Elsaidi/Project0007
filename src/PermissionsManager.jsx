@@ -71,6 +71,16 @@ const PERMISSION_GROUPS = [
     items: [["student_support_messaging", "مراسلات الطلاب / دعم فني"]],
   },
   {
+    title: "مراجعة الامتحانات",
+    items: [
+      ["review_exam_requests", "مراجعة الامتحانات التي طلب الطالب مراجعتها"],
+      ["view_reviewed_exam_reviews", "الامتحانات التي تمت مراجعتها"],
+      ["view_unreviewed_exam_reviews", "الامتحانات التي لم تتم مراجعتها"],
+      ["adjust_exam_review_mark", "تعديل علامة الامتحان أثناء المراجعة"],
+      ["manage_review_request_button_visibility", "إظهار/إخفاء زر إنشاء طلب مراجعة للطلاب"],
+    ],
+  },
+  {
     title: "إدارة الصلاحيات",
     items: [["manage_permissions", "إدارة الصلاحيات"]],
   },

@@ -443,6 +443,19 @@ export default function CheatingMonitor({ supabase }) {
           .eq('id', caseItem.id);
       }
 
+      // إعادة احتساب النتيجة من المصدر المركزي: آلي + مقالي معتمد - خصم الغش.
+      // هذا يمنع ضياع العلامة اليدوية عند تطبيق قرار الغش.
+      try {
+        await supabase.rpc('finalize_exam_result', {
+          p_student_id: Number(caseItem.student_id),
+          p_exam_id: Number(caseItem.exam_id),
+          p_subject_id: null,
+          p_cycle_id: 1
+        });
+      } catch (recalcError) {
+        console.warn('تعذر إعادة احتساب النتيجة المركزية بعد قرار الغش:', recalcError);
+      }
+
       // بعد اتخاذ القرار، لا تُعتمد العلامة إلا إذا لم تعد هناك أي حالة غش معلّقة لنفس الطالب والامتحان.
       await releaseSubmissionIfNoPendingCases(caseItem.student_id, caseItem.exam_id, submission.id);
 
