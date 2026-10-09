@@ -21,9 +21,11 @@ import ViewExams from './ViewExams';
 import StudentResultsManager from './StudentResultsManager';
 import StudentResultView from './StudentResultView';
 import CheatingMonitor from './CheatingMonitor';
+import EssayGradingManager from './EssayGradingManager';
 import ResultAnnouncementManager from './result_announcements';
 import EmployeeMessages from './EmployeeMessages';
 import StudentSupportMessages from './StudentSupportMessages';
+import ExamReviewManager from './ExamReviewManager';
 import Notes from './Notes';
 import InstitutionManagementProfile from './InstitutionManagementProfile';
 
@@ -107,6 +109,24 @@ function normalizeEmployeeRole(role, jobName = '', jobId = null, username = '') 
   }
 
   if (
+    rawRole === 'grader' ||
+    rawRole === 'corrector' ||
+    rawRole === 'مصحح' ||
+    rawJob === 'مصحح'
+  ) {
+    return 'Grader';
+  }
+
+  if (
+    rawRole === 'reviewer' ||
+    rawRole === 'examreviewer' ||
+    rawRole === 'مراجع' ||
+    rawJob === 'مراجع'
+  ) {
+    return 'Reviewer';
+  }
+
+  if (
     rawRole === 'monitor' ||
     rawRole === 'proctor' ||
     rawRole === 'مراقب' ||
@@ -120,8 +140,9 @@ function normalizeEmployeeRole(role, jobName = '', jobId = null, username = '') 
   if (Number(jobId) === 2) return 'Supervisor';
   if (Number(jobId) === 3) return 'Teacher';
   if (Number(jobId) === 4) return 'Monitor';
+  if (Number(jobId) === 7) return 'Grader';
 
-  if (['Admin', 'Supervisor', 'Teacher', 'Monitor', 'Programmer'].includes(role)) {
+  if (['Admin', 'Supervisor', 'Teacher', 'Monitor', 'Grader', 'Programmer'].includes(role)) {
     return role;
   }
 
@@ -666,7 +687,7 @@ function EmployeeLogin({ supabase, onLoginSuccess, onBack }) {
 
 // 1. شاشة الترحيب (تعرض الاسم الحقيقي للموظف)
 function WelcomeScreen({ employeeName, roleTitle, onContinue }) {
-  const [countdown, setCountdown] = useState(3);
+  const [countdown, setCountdown] = useState(2);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -695,7 +716,19 @@ function WelcomeScreen({ employeeName, roleTitle, onContinue }) {
           تم تسجيل الدخول بنجاح بصفتك (<span style={{ color: '#fbbf24' }}>{roleTitle}</span>)
         </p>
         <div style={welcomeStyles.timerBox}>
-          ⏳ سيتم توجيهك إلى لوحة التحكم خلال <span style={{ color: '#38bdf8', fontWeight: 'bold', fontSize: '18px' }}>{countdown}</span> ثوانٍ...
+          <div
+            aria-label={`سيتم الانتقال خلال ${countdown} ثانية`}
+            role="timer"
+            style={{
+              width: '58px', height: '58px', borderRadius: '50%', flex: '0 0 58px',
+              display: 'grid', placeItems: 'center', fontSize: '24px', fontWeight: 900,
+              color: '#fff', border: '4px solid rgba(56,189,248,.35)',
+              borderTopColor: '#38bdf8', background: 'rgba(15,23,42,.72)',
+              boxShadow: '0 0 0 5px rgba(56,189,248,.08)',
+              transition: 'all .25s ease'
+            }}
+          >{countdown}</div>
+          <span>سيتم توجيهك إلى لوحة التحكم خلال {countdown} {countdown === 1 ? 'ثانية' : 'ثانيتين'}...</span>
         </div>
       </div>
     </div>
@@ -751,6 +784,11 @@ const welcomeStyles = {
     margin: '0 auto 20px'
   },
   timerBox: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '14px',
+    flexWrap: 'wrap',
     backgroundColor: 'rgba(15, 23, 42, 0.6)',
     padding: '12px',
     borderRadius: '8px',
@@ -921,6 +959,7 @@ export default function AdminPanel({ supabase, styles, showAlertMessage, onLogou
   // AdminLogin هي الشاشة الثانية، وتظهر بعد الضغط على دخول الموظفين من WelcomeScreen.
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [showWelcome, setShowWelcome] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   const [currentUser, setCurrentUser] = useState(user || {
     id: localStorage.getItem('currentUserId'),
@@ -1109,7 +1148,8 @@ export default function AdminPanel({ supabase, styles, showAlertMessage, onLogou
     exams: canAny('view_exams', 'add_exam', 'edit_exam', 'delete_exam'),
     academic_structure: canAny('manage_branches', 'manage_subjects', 'manage_units'),
     students: hasPermission('manage_students') || userRole === 'Admin',
-    student_results: hasPermission('manage_student_results') || hasPermission('view_student_results')
+    student_results: hasPermission('manage_student_results') || hasPermission('view_student_results'),
+    exam_reviews: userRole === 'Admin' || canAny('review_exam_requests','view_reviewed_exam_reviews','view_unreviewed_exam_reviews')
   });
 
   const toggleMenu = (menu) => setOpenMenus(prev => ({ ...prev, [menu]: !prev[menu] }));
@@ -1122,7 +1162,9 @@ export default function AdminPanel({ supabase, styles, showAlertMessage, onLogou
     if (role === 'InstitutionManager') return 'مدير المؤسسة';
     if (role === 'Supervisor') return 'المشرف';
     if (role === 'Monitor') return 'المراقب';
+    if (role === 'Reviewer') return 'المراجع';
     if (role === 'Teacher') return 'المعلم';
+    if (role === 'Grader') return 'المصحح';
     return 'الموظف';
   };
 
@@ -1177,7 +1219,7 @@ export default function AdminPanel({ supabase, styles, showAlertMessage, onLogou
         onLoginSuccess={(userData) => {
           setCurrentUser(userData);
           setIsLoggedIn(true);
-          setShowWelcome(false);
+          setShowWelcome(true);
         }} 
         onBack={handleHomeClick} 
       />
@@ -1291,6 +1333,16 @@ export default function AdminPanel({ supabase, styles, showAlertMessage, onLogou
           بسم الله الرحمن الرحيم
         </div>
 
+        <button
+          type="button"
+          className="mobile-sidebar-toggle"
+          onClick={() => setMobileSidebarOpen(true)}
+          aria-label="فتح القائمة الجانبية"
+          title="القائمة"
+        >
+          ☰
+        </button>
+
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', borderTop: '1px solid #334155', paddingTop: '10px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
                <img src={institution?.logo_url || ministryLogo} alt="Logo" style={{ width: '45px', height: '45px', objectFit: 'cover', borderRadius: '50%' }} />
@@ -1327,12 +1379,46 @@ export default function AdminPanel({ supabase, styles, showAlertMessage, onLogou
       <div style={{ display: 'flex', flex: 1, minHeight: 'calc(100vh - 120px)' }}>
         
         {/* القائمة الجانبية (يمين) */}
-        <div style={{ width: '270px', backgroundColor: '#1e293b', borderLeft: '1px solid #334155', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ padding: '18px', borderBottom: '1px solid #334155', fontWeight: 'bold', fontSize: '15px', color: '#cbd5e1', textAlign: 'center' }}>
+        <div
+          className={`admin-sidebar ${mobileSidebarOpen ? 'mobile-sidebar-open' : ''}`}
+          style={{ width: '270px', backgroundColor: '#1e293b', borderLeft: '1px solid #334155', display: 'flex', flexDirection: 'column' }}
+        >
+          <div className="sidebar-institution-brand" dir="rtl">
+            <img
+              src={institution?.logo_url || ministryLogo}
+              alt="شعار المؤسسة"
+              onError={(event) => { event.currentTarget.src = ministryLogo; }}
+            />
+            <div className="sidebar-brand-name">
+              <strong>{institution?.name_line_1 || institution?.name || institution?.official_name || 'اسم المؤسسة'}</strong>
+              {(institution?.name_line_2 || institution?.name_line_3) && (
+                <small>{[institution?.name_line_2, institution?.name_line_3].filter(Boolean).join(' ')}</small>
+              )}
+            </div>
+          </div>
+          <div className="sidebar-employee-profile" dir="rtl">
+            <span className="sidebar-employee-avatar">👤</span>
+            <div>
+              <strong>{currentUser?.name || localStorage.getItem('currentName') || 'الموظف'}</strong>
+              <small>{currentUser?.job_name || localStorage.getItem('currentJobName') || getRoleTitle(userRole)}</small>
+            </div>
+          </div>
+          <div className="mobile-sidebar-top">
+            <strong>القائمة الرئيسية</strong>
+            <button
+              type="button"
+              onClick={() => setMobileSidebarOpen(false)}
+              aria-label="إغلاق القائمة الجانبية"
+              title="إغلاق"
+            >
+              ×
+            </button>
+          </div>
+          <div className="desktop-sidebar-title" style={{ padding: '18px', borderBottom: '1px solid #334155', fontWeight: 'bold', fontSize: '15px', color: '#cbd5e1', textAlign: 'center' }}>
             القائمة الرئيسية
           </div>
           
-          <div onPointerOver={handleMenuPointerOver} style={{ display: 'flex', flexDirection: 'column', padding: '10px', gap: '8px' }}>
+          <div onPointerOver={handleMenuPointerOver} onClick={() => setMobileSidebarOpen(false)} style={{ display: 'flex', flexDirection: 'column', padding: '10px', gap: '8px' }}>
             {/* إدارة المؤسسة */}
             {canAccess('manage_institution') && (
               <button type="button" onClick={() => setActiveTab('institution_management')} style={mainItemStyle(activeTab === 'institution_management')}>
@@ -1438,6 +1524,12 @@ export default function AdminPanel({ supabase, styles, showAlertMessage, onLogou
               </button>
             )}
 
+            {(userRole === 'Grader' || canAccess('grade_essays')) && (
+              <button type="button" onClick={() => setActiveTab('essay_grading')} style={mainItemStyle(activeTab === 'essay_grading')}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>📝 تصحيح الأسئلة المقالية</span>
+              </button>
+            )}
+
             {canAccess('view_statistics') && (
               <button type="button" onClick={() => setActiveTab('statistics')} style={mainItemStyle(activeTab === 'statistics')}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>📈 الإحصائيات العامة</span>
@@ -1460,6 +1552,22 @@ export default function AdminPanel({ supabase, styles, showAlertMessage, onLogou
                   {studentSupportUnreadCount > 0 && <span style={{ minWidth: 20, height: 20, padding: '0 6px', borderRadius: 999, background: '#ef4444', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 900 }}>{studentSupportUnreadCount > 99 ? '99+' : studentSupportUnreadCount}</span>}
                 </span>
               </button>
+            )}
+
+            {(userRole === 'Admin' || canAccess('review_exam_requests') || canAccess('view_reviewed_exam_reviews') || canAccess('view_unreviewed_exam_reviews')) && (
+              <div>
+                <button type="button" onClick={() => toggleMenu('exam_reviews')} style={mainItemStyle(activeTab.includes('exam_reviews'))}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>🔎 مراجعة الامتحانات</span>
+                  <span>{openMenus.exam_reviews ? '▼' : '◀'}</span>
+                </button>
+                {openMenus.exam_reviews && (
+                  <div style={{ display: 'flex', flexDirection: 'column', paddingRight: '15px', gap: '5px', marginTop: '5px' }}>
+                    {(userRole === 'Admin' || canAccess('review_exam_requests')) && <button type="button" onClick={() => setActiveTab('exam_reviews_pending')} style={subItemStyle(activeTab === 'exam_reviews_pending')}>📝 مراجعة الامتحانات</button>}
+                    {(userRole === 'Admin' || canAccess('view_reviewed_exam_reviews')) && <button type="button" onClick={() => setActiveTab('exam_reviews_done')} style={subItemStyle(activeTab === 'exam_reviews_done')}>✅ الامتحانات التي تمت مراجعتها</button>}
+                    {(userRole === 'Admin' || canAccess('view_unreviewed_exam_reviews')) && <button type="button" onClick={() => setActiveTab('exam_reviews_unreviewed')} style={subItemStyle(activeTab === 'exam_reviews_unreviewed')}>🕐 الامتحانات التي لم تتم مراجعتها</button>}
+                  </div>
+                )}
+              </div>
             )}
 
             {canAccess('manage_permissions') && (
@@ -1486,10 +1594,29 @@ export default function AdminPanel({ supabase, styles, showAlertMessage, onLogou
               </button>
             )}
           </div>
+
+          <div className="sidebar-logout-wrap">
+            <button
+              type="button"
+              onClick={handleLogoutClick}
+              className="sidebar-logout-button"
+            >
+              ↪ تسجيل الخروج
+            </button>
+          </div>
         </div>
 
+        {mobileSidebarOpen && (
+          <button
+            type="button"
+            className="mobile-sidebar-overlay"
+            onClick={() => setMobileSidebarOpen(false)}
+            aria-label="إغلاق القائمة"
+          />
+        )}
+
         {/* محتوى الصفحات */}
-        <div style={{ flex: 1, padding: '25px', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+        <div className="admin-content" style={{ flex: 1, padding: '25px', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
           
           {activeTab === 'institution_management' && userRole === 'Admin' && (
             <InstitutionManagementProfile
@@ -1575,6 +1702,12 @@ export default function AdminPanel({ supabase, styles, showAlertMessage, onLogou
               : <RestrictedView onBack={handleHomeClick} currentName={currentUser?.name} roleTitle={getRoleTitle(userRole)} />
           )}
 
+          {activeTab === 'essay_grading' && (
+            (userRole === 'Grader' || canAccess('grade_essays'))
+              ? <EssayGradingManager supabase={supabase} onBack={handleHomeClick} />
+              : <RestrictedView onBack={handleHomeClick} currentName={currentUser?.name} roleTitle={getRoleTitle(userRole)} />
+          )}
+
           {activeTab === 'result_announcements' && (
             canAccess('result_announcements')
               ? <ResultAnnouncementManager />
@@ -1590,6 +1723,12 @@ export default function AdminPanel({ supabase, styles, showAlertMessage, onLogou
           {activeTab === 'student_support_messages' && (
             canAccess('student_support_messaging')
               ? <StudentSupportMessages supabase={supabase} styles={styles} showAlertMessage={showAlertMessage} />
+              : <RestrictedView onBack={handleHomeClick} currentName={currentUser?.name} roleTitle={getRoleTitle(userRole)} />
+          )}
+
+          {(activeTab === 'exam_reviews_pending' || activeTab === 'exam_reviews_done' || activeTab === 'exam_reviews_unreviewed') && (
+            (userRole === 'Admin' || canAccess('review_exam_requests') || canAccess('view_reviewed_exam_reviews') || canAccess('view_unreviewed_exam_reviews'))
+              ? <ExamReviewManager supabase={supabase} currentUser={currentUser} userRole={userRole} canAccess={canAccess} initialView={activeTab === 'exam_reviews_done' ? 'reviewed' : 'pending'} styles={styles} showAlertMessage={showAlertMessage} />
               : <RestrictedView onBack={handleHomeClick} currentName={currentUser?.name} roleTitle={getRoleTitle(userRole)} />
           )}
 

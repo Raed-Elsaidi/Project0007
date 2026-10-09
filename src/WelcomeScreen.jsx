@@ -450,12 +450,22 @@ export default function StaffPortalWelcome({
 
           body { overflow-y: auto; }
           .staff-portal-page, .staff-shell { height: auto; min-height: 100vh; overflow: visible; }
-          .staff-header { flex-basis: 92px; }
+          /* Mobile: center the institution identity directly below the Bismillah. */
+          .staff-header { flex-basis: 132px; }
           .bismillah { top: 7px; font-size: 14px; }
           .bismillah::before, .bismillah::after { width: 30px; margin: 0 6px 5px; }
-          .institution-brand { top: 5px; right: 5px; width: 125px; }
-          .header-logo { width: 52px; height: 52px; }
-          .institution-line { font-size: 9px; padding: 2px 5px; }
+          .institution-brand {
+            top: 39px;
+            left: 50%;
+            right: auto;
+            transform: translateX(-50%);
+            width: min(92vw, 300px);
+            gap: 2px;
+          }
+          .header-logo { width: 42px; height: 42px; }
+          .institution-line { font-size: 9px; padding: 2px 6px; max-width: 100%; }
+          /* The header grows to make room for the centered logo; keep the program
+             heading and login card a further 1 cm lower on phone screens. */
           .staff-main { padding: 4px 10px 12px; transform: none; }
           .program-title { font-size: 22px; }
           .staff-title { font-size: 30px; }

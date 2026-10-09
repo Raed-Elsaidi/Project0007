@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { calculateGrade12Result, getSubjectMaximum, getSubjectMinimum } from './Grade12ScoringRules';
 
 
 // ======================================================
@@ -443,191 +444,8 @@ const isLaterCycleSubmission = (candidate, current) => {
   return getSubmissionDate(candidate) > getSubmissionDate(current);
 };
 
-const subjectNameText = (subject) => normalize(firstValue(subject?.subject_name, subject?.name, subject?.title, subject?.subjectName, ''));
-const isScientificBranch = (name) => normalize(name).includes('علمي') || normalize(name).toLowerCase().includes('scientific');
-const isOneOf = (name, words) => {
-  const value = subjectNameText(name).toLowerCase();
-  return words.some(word => value.includes(word));
-};
-
-const normalizeSubjectName = (value) =>
-  normalize(value)
-    .toLowerCase()
-    .replace(/[أإآ]/g, 'ا')
-    .replace(/ة/g, 'ه')
-    .replace(/\s+/g, ' ');
-
-const subjectMatches = (subject, names) => {
-  const value = normalizeSubjectName(subjectNameText(subject));
-  return names.some((name) => value.includes(normalizeSubjectName(name)));
-};
-
-const pickHighestFromGroup = (cells, names, alreadyCountedKeys = new Set()) => {
-  const available = cells.filter(
-    (cell) => subjectMatches(cell.subject, names) && !alreadyCountedKeys.has(cell.key)
-  );
-  if (!available.length) return [];
-  const winner = [...available].sort(
-    (a, b) => Number(b.mark || 0) - Number(a.mark || 0) || Number(b.max || 0) - Number(a.max || 0)
-  )[0];
-  return [winner];
-};
-
-/*
- * قواعد احتساب المجموع حسب الفرع.
- * كل فرع يجب أن ينتهي إلى 7 مواد محتسبة.
- */
-const BRANCH_RULES = [
-  {
-    test: (name) => normalizeSubjectName(name).includes('علمي') || normalizeSubjectName(name).includes('scientific'),
-    groups: [
-      ['التربية الاسلامية', 'التكنولوجيا'],
-      ['الكيمياء', 'الاحياء']
-    ]
-  },
-  {
-    test: (name) => normalizeSubjectName(name).includes('ادبي') || normalizeSubjectName(name).includes('literary'),
-    groups: [
-      ['التربية الاسلامية', 'الجغرافيا'],
-      ['الثقافة العلمية', 'التكنولوجيا']
-    ]
-  },
-  {
-    test: (name) => normalizeSubjectName(name).includes('زراعي') || normalizeSubjectName(name).includes('agricultural'),
-    groups: [
-      ['الاحياء', 'الرياضيات'],
-      ['الكيمياء', 'التربية الاسلامية', 'الاحياء']
-    ]
-  },
-  {
-    test: (name) => normalizeSubjectName(name).includes('صناعي') || normalizeSubjectName(name).includes('industrial'),
-    groups: [
-      ['الرسم الصناعي', 'الفيزياء'],
-      ['التربية الاسلامية', 'التكنولوجيا', 'الرسم الصناعي', 'الفيزياء']
-    ]
-  },
-  {
-    test: (name) => normalizeSubjectName(name).includes('اقتصاد منزلي') || normalizeSubjectName(name).includes('اقتصاد') || normalizeSubjectName(name).includes('home economics'),
-    groups: [
-      ['التكنولوجيا', 'الرياضيات', 'التربية الاسلامية', 'الكيمياء'],
-      ['التكنولوجيا', 'الرياضيات', 'التربية الاسلامية', 'الكيمياء']
-    ]
-  },
-  {
-    test: (name) => normalizeSubjectName(name).includes('فندقي') || normalizeSubjectName(name).includes('hotel'),
-    groups: [
-      ['التكنولوجيا', 'الرياضيات', 'التربية الاسلامية', 'السياحة'],
-      ['التكنولوجيا', 'الرياضيات', 'التربية الاسلامية', 'السياحة']
-    ]
-  },
-  {
-    test: (name) => normalizeSubjectName(name).includes('ريادة') || normalizeSubjectName(name).includes('اعمال') || normalizeSubjectName(name).includes('entrepreneur'),
-    groups: [
-      ['المحاسبة', 'المشاريع الصغيرة'],
-      ['التربية الاسلامية', 'التكنولوجيا', 'المحاسبة', 'المشاريع الصغيرة']
-    ]
-  },
-  {
-    test: (name) => normalizeSubjectName(name).includes('تكنولوجي') || normalizeSubjectName(name).includes('technology'),
-    groups: [
-      ['الاتصالات والالكترونيات', 'الريادة والاعمال'],
-      ['التربية الاسلامية', 'الثقافة العلمية', 'الاتصالات والالكترونيات', 'الريادة والاعمال']
-    ]
-  },
-  {
-    test: (name) => normalizeSubjectName(name).includes('شرعي') || normalizeSubjectName(name).includes('sharia') || normalizeSubjectName(name).includes('religious'),
-    groups: [
-      ['الفقه الاسلامي', 'التاريخ'],
-      ['الجغرافيا', 'التكنولوجيا', 'الفقه الاسلامي', 'التاريخ']
-    ]
-  }
-];
-
-const getBranchRule = (branchName) => BRANCH_RULES.find((rule) => rule.test(branchName)) || null;
-
-const calculateCountedCells = (branchName, subjectCells) => {
-  const rule = getBranchRule(branchName);
-  if (!rule) return subjectCells.slice();
-
-  const counted = [];
-  const countedKeys = new Set();
-
-  // المجموعة الأولى: نختار الأعلى.
-  const first = pickHighestFromGroup(subjectCells, rule.groups[0], countedKeys);
-  first.forEach((cell) => {
-    counted.push(cell);
-    countedKeys.add(cell.key);
-  });
-
-  // المجموعة الثانية: إذا كانت تحتوي مادة فائزة من المجموعة الأولى،
-  // لا نحتسبها مرتين؛ نختار الأعلى من المواد المتبقية.
-  const second = pickHighestFromGroup(subjectCells, rule.groups[1], countedKeys);
-  second.forEach((cell) => {
-    counted.push(cell);
-    countedKeys.add(cell.key);
-  });
-
-  // كل المواد الأخرى محتسبة، مع استثناء المواد التي تنتمي للمجموعتين
-  // ولم يتم اختيارها كبديل.
-  subjectCells.forEach((cell) => {
-    if (countedKeys.has(cell.key)) return;
-    const inFirst = subjectMatches(cell.subject, rule.groups[0]);
-    const inSecond = subjectMatches(cell.subject, rule.groups[1]);
-    if (inFirst || inSecond) return;
-    counted.push(cell);
-    countedKeys.add(cell.key);
-  });
-
-  // ضمان احتساب 7 مواد بالضبط عند وجود أكثر/أقل بسبب اختلاف أسماء المواد.
-  // إذا كانت القاعدة أنتجت أقل من 7، نكمل بأعلى العلامات من غير المحتسبة.
-  if (counted.length < 7) {
-    subjectCells
-      .filter((cell) => !countedKeys.has(cell.key))
-      .sort((a, b) => Number(b.mark || 0) - Number(a.mark || 0))
-      .slice(0, 7 - counted.length)
-      .forEach((cell) => {
-        counted.push(cell);
-        countedKeys.add(cell.key);
-      });
-  }
-
-  // إذا كان عدد المواد أكثر من 7، نحتفظ بالمواد ذات العلامة الأعلى من غير القواعد.
-  if (counted.length > 7) {
-    return counted
-      .sort((a, b) => Number(b.mark || 0) - Number(a.mark || 0))
-      .slice(0, 7);
-  }
-
-  return counted;
-};
-
-const getAcademicResult = (subjectCells, countedCells, total = null, maximum = null) => {
-  const counted = countedCells?.length ? countedCells : subjectCells;
-  const calculatedTotal = total == null
-    ? counted.reduce((sum, cell) => sum + toNumber(cell.mark), 0)
-    : toNumber(total);
-  const calculatedMaximum = maximum == null
-    ? counted.reduce((sum, cell) => sum + toNumber(cell.max), 0)
-    : toNumber(maximum);
-  const average = calculatedMaximum > 0
-    ? (calculatedTotal / calculatedMaximum) * 100
-    : 0;
-
-  const failedSubjects = counted.filter(
-    (cell) => toNumber(cell.mark) < toNumber(cell.subject.min)
-  ).length;
-
-  // النتيجة تعتمد أولاً على المجموع والمعدل:
-  // أقل من 50% = راسب، و50% فأعلى مع عدم وجود مواد راسبة = ناجح.
-  // إذا كان المعدل 50% فأعلى مع وجود 1-4 مواد دون الحد الأدنى = مكمل.
-  // أكثر من 4 مواد دون الحد الأدنى = راسب.
-  if (average < 50) return 'راسب';
-  if (failedSubjects === 0) return 'ناجح';
-  if (failedSubjects >= 1 && failedSubjects <= 4) return 'مكمل';
-  return 'راسب';
-};
-
-
+// قواعد احتساب الصف 12 موحدة في Grade12ScoringRules.js.
+// يتم اختيار العلامة الأعلى من المواد الاختيارية بناءً على العلامة الفعلية التي حصل عليها الطالب.
 const formatNumber = (value) => {
   const n = toNumber(value);
   return Number.isInteger(n) ? String(n) : n.toFixed(2);
@@ -694,6 +512,7 @@ export default function StudentResultsManager({ supabase, branchId = null }) {
   const [studentAnswers, setStudentAnswers] = useState([]);
   const [questions, setQuestions] = useState([]);
   const [cheatingCases, setCheatingCases] = useState([]);
+  const [examResults, setExamResults] = useState([]);
   const [selectedBranch, setSelectedBranch] = useState(branchId != null ? String(branchId) : 'all');
   const [selectedCycle, setSelectedCycle] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -717,6 +536,35 @@ export default function StudentResultsManager({ supabase, branchId = null }) {
     if (branchId != null && branchId !== '') setSelectedBranch(String(branchId));
   }, [branchId]);
 
+  const recalculateAndSaveAll = async () => {
+    setError('');
+    try {
+      const unique = new Map();
+      (submissions || []).forEach((s) => {
+        const sid = s?.student_id;
+        const eid = s?.exam_id;
+        if (sid == null || eid == null) return;
+        unique.set(`${sid}:${eid}`, { sid, eid });
+      });
+      for (const item of unique.values()) {
+        const { data, error } = await supabase.rpc('finalize_exam_result', {
+          p_student_id: Number(item.sid), p_exam_id: Number(item.eid), p_subject_id: null, p_cycle_id: 1
+        });
+        if (error) throw error;
+      }
+      const studentIds = [...new Set((submissions || []).map(s => s?.student_id).filter(Boolean))];
+      for (const sid of studentIds) {
+        const { error } = await supabase.rpc('recalculate_student_final_result', { p_student_id: Number(sid), p_cycle_id: 1 });
+        if (error) throw error;
+      }
+      await loadResults();
+      setError('تم احتساب وحفظ العلامات الآلية والمقالية وخصومات الغش والمعدل والنتيجة في الجداول الرسمية.');
+    } catch (e) {
+      console.error(e);
+      setError(e?.message || 'تعذر حفظ النتائج النهائية.');
+    }
+  };
+
   const loadResults = async () => {
     if (!supabase?.from) {
       setError('لم يتم تمرير اتصال Supabase إلى شاشة إدارة النتائج.');
@@ -728,7 +576,7 @@ export default function StudentResultsManager({ supabase, branchId = null }) {
     setError('');
 
     try {
-      const [studentsRes, branchesRes, subjectsRes, examsRes, submissionsRes, cheatingRes, answersRes, questionsRes] = await Promise.all([
+      const [studentsRes, branchesRes, subjectsRes, examsRes, submissionsRes, cheatingRes, answersRes, questionsRes, examResultsRes] = await Promise.all([
         supabase.from('students').select('*'),
         supabase.from('branches').select('*'),
         supabase.from('subjects').select('*'),
@@ -736,7 +584,8 @@ export default function StudentResultsManager({ supabase, branchId = null }) {
         supabase.from('submissions').select('*'),
         supabase.from('cheating_cases').select('id, student_id, exam_id, case_status, action_taken, deduction_marks, processed_at'),
         supabase.from('student_answers').select('*'),
-        supabase.from('questions').select('*')
+        supabase.from('questions').select('*'),
+        supabase.from('exam_results').select('*')
       ]);
 
       if (studentsRes.error) throw studentsRes.error;
@@ -747,6 +596,7 @@ export default function StudentResultsManager({ supabase, branchId = null }) {
       if (cheatingRes.error) console.warn('تعذر تحميل حالات الغش:', cheatingRes.error);
       if (answersRes.error) console.warn('تعذر تحميل إجابات الطلاب لحساب العلامات:', answersRes.error);
       if (questionsRes.error) console.warn('تعذر تحميل الأسئلة لحساب العلامات:', questionsRes.error);
+      if (examResultsRes.error) console.warn('تعذر تحميل النتائج النهائية المحفوظة:', examResultsRes.error);
 
       setStudents(studentsRes.data || []);
       const loadedBranches = (branchesRes.data || []).map((b) => ({ ...b, display_name: getBranchName(b) }));
@@ -768,6 +618,7 @@ export default function StudentResultsManager({ supabase, branchId = null }) {
       setStudentAnswers(answersRes.data || []);
       setQuestions(questionsRes.data || []);
       setCheatingCases(cheatingRes.data || []);
+      setExamResults(examResultsRes.data || []);
       setLastUpdated(new Date());
     } catch (err) {
       console.error('StudentResultsManager load error:', err);
@@ -1028,7 +879,14 @@ export default function StudentResultsManager({ supabase, branchId = null }) {
           // is_correct قديم أو مقارنة خاطئة بين رقم الخيار ونصه.
           return Math.max(a, b);
         })();
-        const mark = released ? getSubmissionScore(submission, calculatedScore) : 0;
+        const storedResult = submission
+          ? (examResults || []).find((row) => String(row?.student_id ?? '') === String(submission?.student_id ?? student?.id ?? '') && String(row?.exam_id ?? '') === String(submission?.exam_id ?? submission?.examId ?? ''))
+          : null;
+        const mark = released
+          ? (storedResult && Number.isFinite(Number(storedResult.final_score))
+            ? Number(storedResult.final_score)
+            : getSubmissionScore(submission, calculatedScore))
+          : 0;
         subjectCells.push({
           key: subject.key,
           subject,
@@ -1041,20 +899,15 @@ export default function StudentResultsManager({ supabase, branchId = null }) {
         });
       });
 
-      const selectedCells = calculateCountedCells(currentBranchName, subjectCells);
+      const grade12Result = calculateGrade12Result(currentBranchName, subjectCells);
+      const selectedCells = grade12Result.selectedCells;
 
-      const total = selectedCells.reduce((sum, cell) => sum + toNumber(cell.mark), 0);
-      // المجموع العظمى والصغرى للفرع تُحسب من المواد المعتمدة فعليًا.
-      const maximumTotal = selectedCells.length === 7
-        ? 700
-        : selectedCells.reduce((sum, cell) => sum + toNumber(cell.max), 0);
-      const minimumTotal = selectedCells.length === 7
-        ? 350
-        : selectedCells.reduce((sum, cell) => sum + toNumber(cell.subject.min), 0);
-      const average = maximumTotal > 0 ? total / maximumTotal : 0;
-      const percentage = average * 100;
-      const academicResult = getAcademicResult(subjectCells, selectedCells, total, maximumTotal);
-      const failedSubjects = selectedCells.filter(cell => toNumber(cell.mark) < toNumber(cell.subject.min)).length;
+      const total = grade12Result.total;
+      const maximumTotal = grade12Result.maximumTotal; // 700 حسب قواعد الصف 12
+      const minimumTotal = 350;
+      const percentage = grade12Result.percentage;
+      const academicResult = grade12Result.status;
+      const failedSubjects = grade12Result.failedSubjects;
 
       const marks = {};
       branchSubjects.forEach(subject => {
@@ -1280,9 +1133,12 @@ export default function StudentResultsManager({ supabase, branchId = null }) {
           <h1 style={styles.title}>📊 إدارة نتائج الطلاب</h1>
           <div style={styles.subtitle}>كشف علامات {selectedBranchName} — {selectedCycle === 'all' ? 'جميع الدورات' : `الدورة ${selectedCycle}`} — العلامة الدنيا والقصوى حسب المادة</div>
         </div>
-        <button onClick={loadResults} disabled={loading} style={styles.refreshButton}>
-          {loading ? 'جاري التحديث...' : '↻ تحديث النتائج'}
-        </button>
+        <div style={{display:'flex',gap:8,flexWrap:'wrap',justifyContent:'flex-end'}}>
+          <button onClick={recalculateAndSaveAll} disabled={loading} style={styles.refreshButton}>💾 احتساب وحفظ النتائج</button>
+          <button onClick={loadResults} disabled={loading} style={styles.refreshButton}>
+            {loading ? 'جاري التحديث...' : '↻ تحديث النتائج'}
+          </button>
+        </div>
       </div>
 
       <div style={styles.controls}>

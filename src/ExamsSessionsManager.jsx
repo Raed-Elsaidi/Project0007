@@ -173,7 +173,12 @@ export default function ExamsSessionManager() {
         elective_q1: q1,
         elective_q2: q2,
         bonus_score: bonus,
+        automatic_score: finalScore,
+        manual_score: 0,
+        cheating_deduction: 0,
         final_score: finalScore,
+        grading_status: 'no_essay',
+        score_locked: true,
         submitted_at: new Date().toISOString()
       }]);
 
