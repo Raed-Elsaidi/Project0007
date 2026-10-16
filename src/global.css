@@ -1090,7 +1090,6 @@ input, select, textarea { min-width: 0; }
 @media (min-width:901px){
   .admin-sidebar{transform:none!important;position:relative!important;}
 }
-<<<<<<< HEAD
 
 /* هوية المؤسسة وبيانات الموظف أعلى القائمة الجانبية */
 .sidebar-institution-brand{display:flex;align-items:center;justify-content:flex-start;gap:10px;padding:16px 14px 12px;border-bottom:1px solid rgba(148,163,184,.18);}
@@ -1156,5 +1155,3 @@ input, select, textarea { min-width: 0; }
   .sidebar-logout-wrap{padding:7px;}
   .sidebar-logout-button{font-size:12px;line-height:1.45;}
 }
-=======
->>>>>>> 5188b7379e3d40e74034568164b8e0003144c9f1
