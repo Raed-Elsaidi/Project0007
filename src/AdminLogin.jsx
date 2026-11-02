@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import ministryLogo from './logo.png';
 import raedLogo from './raed-logo1.jpg';
 import programLogo from './program_logo.png';
@@ -21,11 +21,15 @@ import ViewExams from './ViewExams';
 import StudentResultsManager from './StudentResultsManager';
 import StudentResultView from './StudentResultView';
 import CheatingMonitor from './CheatingMonitor';
+import EssayGradingManager from './EssayGradingManager';
 import ResultAnnouncementManager from './result_announcements';
 import EmployeeMessages from './EmployeeMessages';
 import StudentSupportMessages from './StudentSupportMessages';
+import ExamReviewManager from './ExamReviewManager';
 import Notes from './Notes';
+import GuidanceManager from './GuidanceManager';
 import InstitutionManagementProfile from './InstitutionManagementProfile';
+import RegistrationDesk from './RegistrationDesk';
 
 function readInstitutionManagementProfile() {
   try {
@@ -107,6 +111,24 @@ function normalizeEmployeeRole(role, jobName = '', jobId = null, username = '') 
   }
 
   if (
+    rawRole === 'grader' ||
+    rawRole === 'corrector' ||
+    rawRole === 'مصحح' ||
+    rawJob === 'مصحح'
+  ) {
+    return 'Grader';
+  }
+
+  if (
+    rawRole === 'reviewer' ||
+    rawRole === 'examreviewer' ||
+    rawRole === 'مراجع' ||
+    rawJob === 'مراجع'
+  ) {
+    return 'Reviewer';
+  }
+
+  if (
     rawRole === 'monitor' ||
     rawRole === 'proctor' ||
     rawRole === 'مراقب' ||
@@ -120,8 +142,9 @@ function normalizeEmployeeRole(role, jobName = '', jobId = null, username = '') 
   if (Number(jobId) === 2) return 'Supervisor';
   if (Number(jobId) === 3) return 'Teacher';
   if (Number(jobId) === 4) return 'Monitor';
+  if (Number(jobId) === 7) return 'Grader';
 
-  if (['Admin', 'Supervisor', 'Teacher', 'Monitor', 'Programmer'].includes(role)) {
+  if (['Admin', 'Supervisor', 'Teacher', 'Monitor', 'Grader', 'Programmer'].includes(role)) {
     return role;
   }
 
@@ -376,14 +399,27 @@ function EmployeeLogin({ supabase, onLoginSuccess, onBack }) {
         }
         .institution-brand {
           position: absolute;
-          top: 24px;
-          right: 22px;
-          width: 210px;
+          top: 40px;
+          left: 0;
+          right: 0;
+          transform: none;
+          width: 100%;
+          max-width: 100%;
+          box-sizing: border-box;
+          padding-inline: 12px;
           display: flex;
           flex-direction: column;
           align-items: center;
+          justify-content: center;
           text-align: center;
           gap: 3px;
+          margin-inline: auto;
+        }
+        .institution-brand .institution-line {
+          max-width: 100%;
+          box-sizing: border-box;
+          overflow-wrap: anywhere;
+          text-align: center;
         }
         .header-logo {
           width: 72px;
@@ -666,24 +702,32 @@ function EmployeeLogin({ supabase, onLoginSuccess, onBack }) {
 
 // 1. شاشة الترحيب (تعرض الاسم الحقيقي للموظف)
 function WelcomeScreen({ employeeName, roleTitle, onContinue }) {
-  const [countdown, setCountdown] = useState(3);
+  const [countdown, setCountdown] = useState(2);
+  const onContinueRef = useRef(onContinue);
+
+  // Keep the latest callback without restarting the two-second countdown on re-renders.
+  useEffect(() => {
+    onContinueRef.current = onContinue;
+  }, [onContinue]);
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          if (typeof onContinue === 'function') {
-            onContinue();
-          }
-          return 0;
-        }
-        return prev - 1;
-      });
+    const tickTimer = window.setInterval(() => {
+      setCountdown((prev) => Math.max(0, prev - 1));
     }, 1000);
 
-    return () => clearInterval(timer);
-  }, [onContinue]);
+    // A single two-second timeout guarantees the transition happens once.
+    const redirectTimer = window.setTimeout(() => {
+      setCountdown(0);
+      if (typeof onContinueRef.current === 'function') {
+        onContinueRef.current();
+      }
+    }, 2000);
+
+    return () => {
+      window.clearInterval(tickTimer);
+      window.clearTimeout(redirectTimer);
+    };
+  }, []);
 
   return (
     <div style={welcomeStyles.container} dir="rtl">
@@ -695,7 +739,37 @@ function WelcomeScreen({ employeeName, roleTitle, onContinue }) {
           تم تسجيل الدخول بنجاح بصفتك (<span style={{ color: '#fbbf24' }}>{roleTitle}</span>)
         </p>
         <div style={welcomeStyles.timerBox}>
-          ⏳ سيتم توجيهك إلى لوحة التحكم خلال <span style={{ color: '#38bdf8', fontWeight: 'bold', fontSize: '18px' }}>{countdown}</span> ثوانٍ...
+          <div
+            aria-label={`سيتم الانتقال خلال ${countdown} ثانية`}
+            role="timer"
+            style={{
+              position: 'relative', width: '96px', height: '96px', flex: '0 0 96px',
+              display: 'grid', placeItems: 'center', borderRadius: '50%',
+              color: '#fff', background: 'rgba(15,23,42,.72)',
+              boxShadow: 'none'
+            }}
+          >
+            <svg aria-hidden="true" className="welcome-countdown-ring" viewBox="0 0 96 96" width="96" height="96"
+              style={{ position: 'absolute', inset: 0, width: '96px', height: '96px', maxWidth: 'none', transform: 'rotate(-90deg)', overflow: 'visible' }}>
+              {/* Gray track and blue progress share the exact same center and radius. */}
+              <circle cx="48" cy="48" r="42" fill="none" stroke="rgba(148,163,184,.42)" strokeWidth="6" />
+              {(() => {
+                // Normalize the circle to 100 units to avoid tiny gaps at full progress.
+                // The blue ring exactly overlays the dark track and shrinks smoothly to zero.
+                const progress = Math.max(0, Math.min(2, countdown)) / 2;
+                return (
+                  <circle cx="48" cy="48" r="42" pathLength="100"
+                    fill="none" stroke="#38bdf8" strokeWidth="6"
+                    strokeLinecap="butt"
+                    strokeDasharray="100 100"
+                    strokeDashoffset={100 * (1 - progress)}
+                    style={{ transition: 'stroke-dashoffset 1s linear' }} />
+                );
+              })()}
+            </svg>
+            <span style={{ position: 'relative', zIndex: 1, fontSize: '38px', lineHeight: 1, fontWeight: 900 }}>{countdown}</span>
+          </div>
+          <span>سيتم توجيهك إلى لوحة التحكم خلال {countdown} {countdown === 1 ? 'ثانية' : 'ثانيتين'}...</span>
         </div>
       </div>
     </div>
@@ -751,6 +825,11 @@ const welcomeStyles = {
     margin: '0 auto 20px'
   },
   timerBox: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '14px',
+    flexWrap: 'wrap',
     backgroundColor: 'rgba(15, 23, 42, 0.6)',
     padding: '12px',
     borderRadius: '8px',
@@ -921,6 +1000,7 @@ export default function AdminPanel({ supabase, styles, showAlertMessage, onLogou
   // AdminLogin هي الشاشة الثانية، وتظهر بعد الضغط على دخول الموظفين من WelcomeScreen.
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [showWelcome, setShowWelcome] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   const [currentUser, setCurrentUser] = useState(user || {
     id: localStorage.getItem('currentUserId'),
@@ -1109,7 +1189,8 @@ export default function AdminPanel({ supabase, styles, showAlertMessage, onLogou
     exams: canAny('view_exams', 'add_exam', 'edit_exam', 'delete_exam'),
     academic_structure: canAny('manage_branches', 'manage_subjects', 'manage_units'),
     students: hasPermission('manage_students') || userRole === 'Admin',
-    student_results: hasPermission('manage_student_results') || hasPermission('view_student_results')
+    student_results: hasPermission('manage_student_results') || hasPermission('view_student_results'),
+    exam_reviews: userRole === 'Admin' || canAny('review_exam_requests','view_reviewed_exam_reviews','view_unreviewed_exam_reviews')
   });
 
   const toggleMenu = (menu) => setOpenMenus(prev => ({ ...prev, [menu]: !prev[menu] }));
@@ -1122,7 +1203,9 @@ export default function AdminPanel({ supabase, styles, showAlertMessage, onLogou
     if (role === 'InstitutionManager') return 'مدير المؤسسة';
     if (role === 'Supervisor') return 'المشرف';
     if (role === 'Monitor') return 'المراقب';
+    if (role === 'Reviewer') return 'المراجع';
     if (role === 'Teacher') return 'المعلم';
+    if (role === 'Grader') return 'المصحح';
     return 'الموظف';
   };
 
@@ -1177,7 +1260,7 @@ export default function AdminPanel({ supabase, styles, showAlertMessage, onLogou
         onLoginSuccess={(userData) => {
           setCurrentUser(userData);
           setIsLoggedIn(true);
-          setShowWelcome(false);
+          setShowWelcome(true);
         }} 
         onBack={handleHomeClick} 
       />
@@ -1285,15 +1368,25 @@ export default function AdminPanel({ supabase, styles, showAlertMessage, onLogou
     <div style={{ color: '#fff', fontFamily: 'Noto Kufi Arabic, sans-serif', backgroundColor: '#0f172a', minHeight: '100vh', display: 'flex', flexDirection: 'column' }} dir="rtl">
       
       {/* الترويسة العلوية Header */}
-      <header style={{ backgroundColor: '#1e293b', borderBottom: '1px solid #334155', padding: '15px 30px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', minHeight: '120px' }}>
+      <header className="staff-dashboard-header" style={{ backgroundColor: '#1e293b', borderBottom: '1px solid #334155', padding: '15px 30px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', minHeight: '120px' }}>
         
         <div style={{ fontSize: '22px', fontFamily: 'Amiri, Traditional Arabic, serif', fontWeight: 'bold', color: '#fbbf24', textAlign: 'center', width: '100%', letterSpacing: '1px' }}>
           بسم الله الرحمن الرحيم
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', borderTop: '1px solid #334155', paddingTop: '10px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-               <img src={institution?.logo_url || ministryLogo} alt="Logo" style={{ width: '45px', height: '45px', objectFit: 'cover', borderRadius: '50%' }} />
+        <button
+          type="button"
+          className="mobile-sidebar-toggle"
+          onClick={() => setMobileSidebarOpen(true)}
+          aria-label="فتح القائمة الجانبية"
+          title="القائمة"
+        >
+          ☰
+        </button>
+
+        <div className="staff-dashboard-header-row" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', width: '100%', borderTop: '1px solid #334155', paddingTop: '10px', gap: '10px' }}>
+          <div className="staff-dashboard-brand" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '6px', width: '100%', textAlign: 'center' }}>
+               <img src={institution?.logo_url || ministryLogo} alt="Logo" style={{ width: '58px', height: '58px', objectFit: 'contain', borderRadius: '50%' }} />
                <div>
                  <h4 style={{ margin: '0', color: '#f8fafc', fontSize: '13px', fontWeight: 'bold' }}>{(institution?.name_line_1 || institution?.name || institution?.official_name || '')}</h4>
                  <p style={{ margin: '2px 0 0 0', color: '#94a3b8', fontSize: '11px', fontWeight: 'bold' }}>
@@ -1302,11 +1395,11 @@ export default function AdminPanel({ supabase, styles, showAlertMessage, onLogou
                </div>
           </div>
 
-          <div style={{ fontSize: '19px', fontWeight: 'bold', color: '#38bdf8' }}>
+          <div className="staff-dashboard-title" style={{ fontSize: '19px', fontWeight: 'bold', color: '#38bdf8', textAlign: 'center', width: '100%' }}>
             لوحة تحكم الموظفين
           </div>
 
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <div className="staff-dashboard-user-actions" style={{ display: 'flex', gap: '10px', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', width: '100%' }}>
             <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#cbd5e1' }}>
               مرحباً، {currentUser?.name || localStorage.getItem('currentName') || 'الموظف'}
               {' - '}
@@ -1327,12 +1420,47 @@ export default function AdminPanel({ supabase, styles, showAlertMessage, onLogou
       <div style={{ display: 'flex', flex: 1, minHeight: 'calc(100vh - 120px)' }}>
         
         {/* القائمة الجانبية (يمين) */}
-        <div style={{ width: '270px', backgroundColor: '#1e293b', borderLeft: '1px solid #334155', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ padding: '18px', borderBottom: '1px solid #334155', fontWeight: 'bold', fontSize: '15px', color: '#cbd5e1', textAlign: 'center' }}>
+        <div
+          className={`admin-sidebar ${mobileSidebarOpen ? 'mobile-sidebar-open' : ''}`}
+          style={{ width: '270px', backgroundColor: '#1e293b', borderLeft: '1px solid #334155', display: 'flex', flexDirection: 'column' }}
+        >
+          <div className="sidebar-institution-brand" dir="rtl">
+            <img
+              src={institution?.logo_url || ministryLogo}
+              alt="شعار المؤسسة"
+              onError={(event) => { event.currentTarget.src = ministryLogo; }}
+            />
+            <div className="sidebar-brand-name">
+              <strong>{institution?.name_line_1 || institution?.name || institution?.official_name || 'اسم المؤسسة'}</strong>
+              {(institution?.name_line_2 || institution?.name_line_3) && (
+                <small>{[institution?.name_line_2, institution?.name_line_3].filter(Boolean).join(' ')}</small>
+              )}
+            </div>
+          </div>
+          <div className="sidebar-employee-profile" dir="rtl">
+            <span className="sidebar-employee-avatar">👤</span>
+            <div>
+              <strong>{currentUser?.name || localStorage.getItem('currentName') || 'الموظف'}</strong>
+              <small>{getRoleTitle(userRole)}</small>
+            </div>
+          </div>
+          <div className="mobile-sidebar-top">
+            <strong>القائمة الرئيسية</strong>
+            <button
+              type="button"
+              onClick={() => setMobileSidebarOpen(false)}
+              aria-label="إغلاق القائمة الجانبية"
+              title="إغلاق"
+            >
+              ×
+            </button>
+          </div>
+          <div className="desktop-sidebar-title" style={{ padding: '18px', borderBottom: '1px solid #334155', fontWeight: 'bold', fontSize: '15px', color: '#cbd5e1', textAlign: 'center' }}>
             القائمة الرئيسية
           </div>
           
-          <div onPointerOver={handleMenuPointerOver} style={{ display: 'flex', flexDirection: 'column', padding: '10px', gap: '8px' }}>
+          <div className="sidebar-menu-scroll">
+          <div onPointerOver={handleMenuPointerOver} onClick={() => setMobileSidebarOpen(false)} style={{ display: 'flex', flexDirection: 'column', padding: '10px', gap: '8px' }}>
             {/* إدارة المؤسسة */}
             {canAccess('manage_institution') && (
               <button type="button" onClick={() => setActiveTab('institution_management')} style={mainItemStyle(activeTab === 'institution_management')}>
@@ -1438,6 +1566,12 @@ export default function AdminPanel({ supabase, styles, showAlertMessage, onLogou
               </button>
             )}
 
+            {(userRole === 'Grader' || canAccess('grade_essays')) && (
+              <button type="button" onClick={() => setActiveTab('essay_grading')} style={mainItemStyle(activeTab === 'essay_grading')}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>📝 تصحيح الأسئلة المقالية</span>
+              </button>
+            )}
+
             {canAccess('view_statistics') && (
               <button type="button" onClick={() => setActiveTab('statistics')} style={mainItemStyle(activeTab === 'statistics')}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>📈 الإحصائيات العامة</span>
@@ -1462,6 +1596,28 @@ export default function AdminPanel({ supabase, styles, showAlertMessage, onLogou
               </button>
             )}
 
+            {(userRole === 'Admin' || canAccess('review_exam_requests') || canAccess('view_reviewed_exam_reviews') || canAccess('view_unreviewed_exam_reviews')) && (
+              <div>
+                <button type="button" onClick={() => toggleMenu('exam_reviews')} style={mainItemStyle(activeTab.includes('exam_reviews'))}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>🔎 مراجعة الامتحانات</span>
+                  <span>{openMenus.exam_reviews ? '▼' : '◀'}</span>
+                </button>
+                {openMenus.exam_reviews && (
+                  <div style={{ display: 'flex', flexDirection: 'column', paddingRight: '15px', gap: '5px', marginTop: '5px' }}>
+                    {(userRole === 'Admin' || canAccess('review_exam_requests')) && <button type="button" onClick={() => setActiveTab('exam_reviews_pending')} style={subItemStyle(activeTab === 'exam_reviews_pending')}>📝 مراجعة الامتحانات</button>}
+                    {(userRole === 'Admin' || canAccess('view_reviewed_exam_reviews')) && <button type="button" onClick={() => setActiveTab('exam_reviews_done')} style={subItemStyle(activeTab === 'exam_reviews_done')}>✅ الامتحانات التي تمت مراجعتها</button>}
+                    {(userRole === 'Admin' || canAccess('view_unreviewed_exam_reviews')) && <button type="button" onClick={() => setActiveTab('exam_reviews_unreviewed')} style={subItemStyle(activeTab === 'exam_reviews_unreviewed')}>🕐 الامتحانات التي لم تتم مراجعتها</button>}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {canAccess('view_registration_requests') && (
+              <button type="button" onClick={() => setActiveTab('registration_desk')} style={mainItemStyle(activeTab === 'registration_desk')}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>🗂️ طلبات تسجيل الطلاب</span>
+              </button>
+            )}
+
             {canAccess('manage_permissions') && (
               <button type="button" onClick={() => setActiveTab('permissions')} style={mainItemStyle(activeTab === 'permissions')}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>🛡️ إدارة الصلاحيات</span>
@@ -1471,6 +1627,12 @@ export default function AdminPanel({ supabase, styles, showAlertMessage, onLogou
             {canAny('manage_employees', 'view_employee_profile') && (
               <button type="button" onClick={() => setActiveTab('employees')} style={mainItemStyle(activeTab === 'employees')}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>🧑‍🏫 إدارة الموظفين</span>
+              </button>
+            )}
+
+            {canAccess('manage_guides') && (
+              <button type="button" onClick={() => setActiveTab('guidance')} style={mainItemStyle(activeTab === 'guidance')}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>📘 إدارة الإرشادات</span>
               </button>
             )}
 
@@ -1486,10 +1648,25 @@ export default function AdminPanel({ supabase, styles, showAlertMessage, onLogou
               </button>
             )}
           </div>
+          </div>
+          <div className="sidebar-logout-wrap">
+            <button type="button" className="sidebar-logout-button" onClick={handleLogoutClick}>
+              ↪ تسجيل الخروج
+            </button>
+          </div>
         </div>
 
+        {mobileSidebarOpen && (
+          <button
+            type="button"
+            className="mobile-sidebar-overlay"
+            onClick={() => setMobileSidebarOpen(false)}
+            aria-label="إغلاق القائمة"
+          />
+        )}
+
         {/* محتوى الصفحات */}
-        <div style={{ flex: 1, padding: '25px', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+        <div className="admin-content" style={{ flex: 1, padding: '25px', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
           
           {activeTab === 'institution_management' && userRole === 'Admin' && (
             <InstitutionManagementProfile
@@ -1499,6 +1676,12 @@ export default function AdminPanel({ supabase, styles, showAlertMessage, onLogou
 
           {activeTab === 'notes' && canAccess('notes_book') && (
             <Notes currentEmployeeId={currentUser?.id || localStorage.getItem('currentUserId')} />
+          )}
+
+          {activeTab === 'guidance' && (
+            canAccess('manage_guides')
+              ? <GuidanceManager showAlertMessage={showAlertMessage} />
+              : <RestrictedView onBack={handleHomeClick} currentName={currentUser?.name} roleTitle={getRoleTitle(userRole)} />
           )}
 
           {activeTab === 'backup' && canAccess('backup_data') && (
@@ -1575,6 +1758,12 @@ export default function AdminPanel({ supabase, styles, showAlertMessage, onLogou
               : <RestrictedView onBack={handleHomeClick} currentName={currentUser?.name} roleTitle={getRoleTitle(userRole)} />
           )}
 
+          {activeTab === 'essay_grading' && (
+            (userRole === 'Grader' || canAccess('grade_essays'))
+              ? <EssayGradingManager supabase={supabase} onBack={handleHomeClick} />
+              : <RestrictedView onBack={handleHomeClick} currentName={currentUser?.name} roleTitle={getRoleTitle(userRole)} />
+          )}
+
           {activeTab === 'result_announcements' && (
             canAccess('result_announcements')
               ? <ResultAnnouncementManager />
@@ -1590,6 +1779,12 @@ export default function AdminPanel({ supabase, styles, showAlertMessage, onLogou
           {activeTab === 'student_support_messages' && (
             canAccess('student_support_messaging')
               ? <StudentSupportMessages supabase={supabase} styles={styles} showAlertMessage={showAlertMessage} />
+              : <RestrictedView onBack={handleHomeClick} currentName={currentUser?.name} roleTitle={getRoleTitle(userRole)} />
+          )}
+
+          {(activeTab === 'exam_reviews_pending' || activeTab === 'exam_reviews_done' || activeTab === 'exam_reviews_unreviewed') && (
+            (userRole === 'Admin' || canAccess('review_exam_requests') || canAccess('view_reviewed_exam_reviews') || canAccess('view_unreviewed_exam_reviews'))
+              ? <ExamReviewManager supabase={supabase} currentUser={currentUser} userRole={userRole} canAccess={canAccess} initialView={activeTab === 'exam_reviews_done' ? 'reviewed' : 'pending'} styles={styles} showAlertMessage={showAlertMessage} />
               : <RestrictedView onBack={handleHomeClick} currentName={currentUser?.name} roleTitle={getRoleTitle(userRole)} />
           )}
 
@@ -1620,6 +1815,12 @@ export default function AdminPanel({ supabase, styles, showAlertMessage, onLogou
                 institutionId={currentUser?.institution_id || null}
                 isInstitutionManager={userRole === 'InstitutionManager'}
               />
+              : <RestrictedView onBack={handleHomeClick} currentName={currentUser?.name} roleTitle={getRoleTitle(userRole)} />
+          )}
+
+          {activeTab === 'registration_desk' && (
+            canAccess('view_registration_requests')
+              ? <RegistrationDesk supabase={supabase} currentUser={currentUser} canApprove={canAccess('approve_registration_requests')} canReject={canAccess('reject_registration_requests')} />
               : <RestrictedView onBack={handleHomeClick} currentName={currentUser?.name} roleTitle={getRoleTitle(userRole)} />
           )}
 
