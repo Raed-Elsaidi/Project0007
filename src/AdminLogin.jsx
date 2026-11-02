@@ -138,17 +138,23 @@ function normalizeEmployeeRole(role, jobName = '', jobId = null, username = '') 
   }
 
   // job_id يستخدم فقط عندما لا توجد قيمة صريحة مفهومة.
-  if (Number(jobId) === 1) return 'Admin';
-  if (Number(jobId) === 2) return 'Supervisor';
-  if (Number(jobId) === 3) return 'Teacher';
-  if (Number(jobId) === 4) return 'Monitor';
-  if (Number(jobId) === 7) return 'Grader';
+  
+// job_id يستخدم فقط عندما لا توجد قيمة صريحة
+if (Number(jobId) === 1) return 'Admin';
+if (Number(jobId) === 2) return 'Supervisor';
+if (Number(jobId) === 3) return 'Teacher';
+if (Number(jobId) === 4) return 'Monitor';
+if (Number(jobId) === 6) return 'Technical Support';
+if (Number(jobId) === 7) return 'Grader';
+if (Number(jobId) === 8) return 'Reviewer';
+if (Number(jobId) === 9) return 'Registrar';
 
-  if (['Admin', 'Supervisor', 'Teacher', 'Monitor', 'Grader', 'Programmer'].includes(role)) {
-    return role;
-  }
+if (['Admin', 'Supervisor', 'Teacher', 'Monitor',
+     'Grader', 'Technical Support', 'Reviewer', 'Registrar'].includes(role)) {
+  return role;
+}
 
-  return 'Teacher';
+return 'Teacher';
 }
 
 async function loadEmployeePermissions(supabase, jobId) {
@@ -710,6 +716,7 @@ function WelcomeScreen({ employeeName, roleTitle, onContinue }) {
     onContinueRef.current = onContinue;
   }, [onContinue]);
 
+ 
   useEffect(() => {
     const tickTimer = window.setInterval(() => {
       setCountdown((prev) => Math.max(0, prev - 1));
@@ -743,6 +750,7 @@ function WelcomeScreen({ employeeName, roleTitle, onContinue }) {
             aria-label={`سيتم الانتقال خلال ${countdown} ثانية`}
             role="timer"
             style={{
+
               position: 'relative', width: '96px', height: '96px', flex: '0 0 96px',
               display: 'grid', placeItems: 'center', borderRadius: '50%',
               color: '#fff', background: 'rgba(15,23,42,.72)',
@@ -1384,9 +1392,10 @@ export default function AdminPanel({ supabase, styles, showAlertMessage, onLogou
           ☰
         </button>
 
-        <div className="staff-dashboard-header-row" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', width: '100%', borderTop: '1px solid #334155', paddingTop: '10px', gap: '10px' }}>
-          <div className="staff-dashboard-brand" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '6px', width: '100%', textAlign: 'center' }}>
-               <img src={institution?.logo_url || ministryLogo} alt="Logo" style={{ width: '58px', height: '58px', objectFit: 'contain', borderRadius: '50%' }} />
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', borderTop: '1px solid #334155', paddingTop: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+               <img src={institution?.logo_url || ministryLogo} alt="Logo" style={{ width: '45px', height: '45px', objectFit: 'cover', borderRadius: '50%' }} />
+ 
                <div>
                  <h4 style={{ margin: '0', color: '#f8fafc', fontSize: '13px', fontWeight: 'bold' }}>{(institution?.name_line_1 || institution?.name || institution?.official_name || '')}</h4>
                  <p style={{ margin: '2px 0 0 0', color: '#94a3b8', fontSize: '11px', fontWeight: 'bold' }}>
@@ -1442,6 +1451,9 @@ export default function AdminPanel({ supabase, styles, showAlertMessage, onLogou
             <div>
               <strong>{currentUser?.name || localStorage.getItem('currentName') || 'الموظف'}</strong>
               <small>{getRoleTitle(userRole)}</small>
+
+              <small>{currentUser?.job_name || localStorage.getItem('currentJobName') || getRoleTitle(userRole)}</small>
+
             </div>
           </div>
           <div className="mobile-sidebar-top">
@@ -1460,6 +1472,8 @@ export default function AdminPanel({ supabase, styles, showAlertMessage, onLogou
           </div>
           
           <div className="sidebar-menu-scroll">
+
+
           <div onPointerOver={handleMenuPointerOver} onClick={() => setMobileSidebarOpen(false)} style={{ display: 'flex', flexDirection: 'column', padding: '10px', gap: '8px' }}>
             {/* إدارة المؤسسة */}
             {canAccess('manage_institution') && (
@@ -1618,6 +1632,7 @@ export default function AdminPanel({ supabase, styles, showAlertMessage, onLogou
               </button>
             )}
 
+
             {canAccess('manage_permissions') && (
               <button type="button" onClick={() => setActiveTab('permissions')} style={mainItemStyle(activeTab === 'permissions')}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>🛡️ إدارة الصلاحيات</span>
@@ -1649,8 +1664,13 @@ export default function AdminPanel({ supabase, styles, showAlertMessage, onLogou
             )}
           </div>
           </div>
+
           <div className="sidebar-logout-wrap">
-            <button type="button" className="sidebar-logout-button" onClick={handleLogoutClick}>
+            <button
+              type="button"
+              onClick={handleLogoutClick}
+              className="sidebar-logout-button"
+            >
               ↪ تسجيل الخروج
             </button>
           </div>
