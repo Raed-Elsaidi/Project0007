@@ -77,11 +77,11 @@ export default function StudentSupportMessages({ supabase, styles = {}, showAler
     const channel = supabase?.channel(`student-support-${currentEmployeeId}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'student_support_messages' }, payload => {
         const row = payload?.new;
-        if (!row || Number(row.sender_employee_id) === currentEmployeeId) return;
+        if (!row || (row.sender_type === 'support' && Number(row.sender_employee_id) === currentEmployeeId)) return;
         if (row.id != null && knownIds.current.has(row.id)) return;
         if (row.id != null) knownIds.current.add(row.id);
         setMessages(prev => prev.some(x => String(x.id) === String(row.id)) ? prev : [row, ...prev]);
-        if (row.sender_type === 'student') playStudentIncomingMessageSound();
+        if (row.sender_type !== 'support') playStudentIncomingMessageSound();
       })
       .subscribe();
     return () => { clearInterval(timer); if (channel) supabase.removeChannel(channel); };
@@ -106,8 +106,8 @@ export default function StudentSupportMessages({ supabase, styles = {}, showAler
 
   const filteredMessages = useMemo(() => {
     let list = messages;
-    if (box === 'inbox') list = messages.filter(m => m.sender_type === 'student' && !m.is_read && !m.recipient_deleted_at);
-    if (box === 'read') list = messages.filter(m => m.sender_type === 'student' && m.is_read && !m.recipient_deleted_at);
+    if (box === 'inbox') list = messages.filter(m => m.sender_type !== 'support' && !m.recipient_deleted_at);
+    if (box === 'read') list = messages.filter(m => m.sender_type !== 'support' && m.is_read && !m.recipient_deleted_at);
     if (box === 'sent') list = messages.filter(m => m.sender_type === 'support' && Number(m.sender_employee_id) === currentEmployeeId && !m.sender_deleted_at);
     if (box === 'trash') list = messages.filter(m => m.recipient_deleted_at || m.sender_deleted_at);
     const q = clean(search).toLowerCase();
@@ -119,13 +119,13 @@ export default function StudentSupportMessages({ supabase, styles = {}, showAler
     });
   }, [messages, box, search, students, branches, currentEmployeeId]);
 
-  const unreadCount = messages.filter(m => m.sender_type === 'student' && !m.is_read && !m.recipient_deleted_at).length;
+  const unreadCount = messages.filter(m => m.sender_type !== 'support' && !m.is_read && !m.recipient_deleted_at).length;
 
   const chooseMessage = async (message) => {
     setSelectedMessage(message);
-    if (message.sender_type === 'student' && !message.is_read) {
+    if (message.sender_type !== 'support' && !message.is_read) {
       const now = new Date().toISOString();
-      const { error } = await supabase.from('student_support_messages').update({ is_read: true, read_at: now }).eq('id', message.id).eq('sender_type', 'student');
+      const { error } = await supabase.from('student_support_messages').update({ is_read: true, read_at: now }).eq('id', message.id).neq('sender_type', 'support');
       if (!error) setMessages(prev => prev.map(m => m.id === message.id ? { ...m, is_read: true, read_at: now } : m));
     }
   };

@@ -195,6 +195,8 @@ export default function AddExam({ supabase, showAlertMessage, supervisor }) {
   const [examDate, setExamDate] = useState('');
   const [examTime, setExamTime] = useState('');
   const [duration, setDuration] = useState('30');
+  const [cycles, setCycles] = useState([]);
+  const [selectedCycle, setSelectedCycle] = useState('1');
   const [loading, setLoading] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
 
@@ -338,6 +340,17 @@ export default function AddExam({ supabase, showAlertMessage, supervisor }) {
           Number(window.localStorage.getItem('currentInstitutionId')) ||
           1
         );
+
+  useEffect(() => {
+    const loadCycles = async () => {
+      const { data, error } = await supabase.from('registration_cycles').select('*').order('cycle_number', { ascending: true });
+      if (error) { console.warn('تعذر تحميل دورات الامتحان:', error); return; }
+      setCycles(data || []);
+      const active = (data || []).find(c => Number(c.cycle_number) === 1) || (data || [])[0];
+      if (active?.cycle_number != null) setSelectedCycle(String(active.cycle_number));
+    };
+    loadCycles();
+  }, [supabase]);
 
   // مزامنة القيم من بيانات الموظف الحالي.
   useEffect(() => {
@@ -1135,6 +1148,11 @@ export default function AddExam({ supabase, showAlertMessage, supervisor }) {
       return;
     }
 
+    if (!selectedCycle) {
+      showMsg('الرجاء تحديد دورة الامتحان.', 'error');
+      return;
+    }
+
     const durationNumber = Number(duration);
     if (!Number.isFinite(durationNumber) || durationNumber <= 0) {
       showMsg('الرجاء إدخال مدة امتحان صحيحة أكبر من صفر.', 'error');
@@ -1232,6 +1250,7 @@ export default function AddExam({ supabase, showAlertMessage, supervisor }) {
         exam_structure: JSON.stringify(normalizedExamStructure),
         branch_id: finalBranchId,
         subject_id: finalSubjectId,
+        cycle_id: Number(selectedCycle),
         institution_id: currentInstitutionId,
         question_count: calculateLogicalQuestionCount(normalizedExamStructure),
         // حالة الامتحان تُحسب تلقائياً من التاريخ + الوقت + المدة،
@@ -1410,7 +1429,7 @@ export default function AddExam({ supabase, showAlertMessage, supervisor }) {
           </div>
 
 
-          <div style={{ gridColumn: 'span 2', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+          <div style={{ gridColumn: 'span 2', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
             <div>
               <label style={{ display: 'block', marginBottom: '8px', color: '#93c5fd', fontWeight: 'bold', fontSize: '13px' }}>التاريخ:</label>
               <input type="date" value={examDate} onChange={(e) => setExamDate(e.target.value)} className="edge-fix-input-add ltr-input-fix-a" style={{ padding: '10px' }} />
@@ -1422,6 +1441,12 @@ export default function AddExam({ supabase, showAlertMessage, supervisor }) {
             <div>
               <label style={{ display: 'block', marginBottom: '8px', color: '#93c5fd', fontWeight: 'bold', fontSize: '13px' }}>المدة (د):</label>
               <input type="number" value={duration} onChange={(e) => setDuration(e.target.value)} className="edge-fix-input-add ltr-input-fix-a" style={{ padding: '10px', textAlign: 'center' }} />
+            </div>
+            <div>
+              <label style={{ display: 'block', marginBottom: '8px', color: '#93c5fd', fontWeight: 'bold', fontSize: '13px' }}>دورة الامتحان:</label>
+              <select value={selectedCycle} onChange={(e) => setSelectedCycle(e.target.value)} className="edge-fix-input-add" style={{ padding: '10px', width: '100%' }}>
+                {cycles.length ? cycles.map(c => <option key={c.id} value={c.cycle_number}>الدورة {c.cycle_number}</option>) : <><option value="1">الدورة الأولى</option><option value="2">الدورة الثانية</option><option value="3">الدورة الثالثة</option></>}
+              </select>
             </div>
           </div>
         </div>
