@@ -33,6 +33,7 @@ import RegistrationDesk from './RegistrationDesk';
 import ManualPhotoReviewDesk from './ManualPhotoReviewDesk';
 import ExamBiometricReviewDesk from './ExamBiometricReviewDesk';
 
+
 function readInstitutionManagementProfile() {
   try {
     const raw = window.localStorage.getItem('currentInstitutionData');
