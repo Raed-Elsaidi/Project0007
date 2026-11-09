@@ -68,6 +68,13 @@ const PERMISSION_GROUPS = [
     items: [["monitor_students", "مراقبة محاولات الغش"]],
   },
   {
+    title: "التصحيح المقالـي",
+    items: [
+      ["manage_essay_grading", "إدارة التصحيح وتوزيع أوراق الإجابات"],
+      ["grade_essays", "شاشة تصحيح الأسئلة المقالية"],
+    ],
+  },
+  {
     title: "الإحصائيات",
     items: [["view_statistics", "الإحصائيات العامة"]],
   },
@@ -106,14 +113,6 @@ const PERMISSION_GROUPS = [
       ["manage_jobs", "إدارة الوظائف"],
       ["view_employee_profile", "عرض ملف الموظف"],
     ],
-  },
-  {
-    title: "الإرشادات والتعليمات",
-    items: [["manage_guides", "إدارة الإرشادات"]],
-  },
-  {
-    title: "الإرشادات والتعليمات",
-    items: [["manage_guides", "إدارة الإرشادات"]],
   },
   {
     title: "الملاحظات",
@@ -196,7 +195,6 @@ export default function PermissionsManager() {
       supabase
         .from("permissions")
         .select("id, permission_name, permission_key, is_active")
-        .eq("is_active", true)
         .order("id"),
     ]);
 
@@ -265,7 +263,7 @@ export default function PermissionsManager() {
     []
   );
 
-  const selectAll = () => setSelectedKeys(new Set(allKeys.filter((key) => permissionMap.has(key))));
+  const selectAll = () => setSelectedKeys(new Set(allKeys));
   const clearAll = () => setSelectedKeys(new Set());
 
   const savePermissions = async () => {
@@ -382,11 +380,10 @@ export default function PermissionsManager() {
               </legend>
               <div style={styles.permissionGrid}>
                 {group.items.map(([key, label]) => {
-                  const exists = permissionMap.has(key);
                   const checked = selectedKeys.has(key);
                   return (
-                    <label className="pm-permission" key={key} style={{ ...styles.permission, ...(checked ? styles.permissionChecked : {}), opacity: exists ? 1 : 0.45 }}>
-                      <input type="checkbox" checked={checked} disabled={!exists} onChange={() => togglePermission(key)} style={styles.checkbox} />
+                    <label className="pm-permission" key={key} style={{ ...styles.permission, ...(checked ? styles.permissionChecked : {}), opacity: 1 }}>
+                      <input type="checkbox" checked={checked} onChange={() => togglePermission(key)} style={styles.checkbox} />
                       <span className="pm-permission-label" style={styles.permissionLabel}>{label}</span>
                     </label>
                   );

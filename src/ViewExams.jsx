@@ -180,10 +180,15 @@ export default function ViewExams({ supabase, styles, showAlertMessage, supervis
     const now = new Date();
 
     for (const exam of examsList) {
-      const status = getExamTimeStatus(exam, now);
-      if (status === 'unknown') continue;
+      const start = parseExamStart(exam);
+      const end = getExamEnd(exam);
+      if (!start || !end) continue;
 
-      const shouldBeActive = status === 'active';
+      // is_active opens the biometric verification window 10 minutes early.
+      // The actual exam questions must still be gated by the exact start time
+      // in the student exam-taking application (not present in this portal bundle).
+      const verificationStart = new Date(start.getTime() - 10 * 60 * 1000);
+      const shouldBeActive = now >= verificationStart && now < end;
 
       if (Boolean(exam.is_active) !== shouldBeActive) {
         const { error } = await supabase

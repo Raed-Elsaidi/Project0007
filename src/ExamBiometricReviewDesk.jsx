@@ -5,13 +5,13 @@ const styles = {
   button:{border:0,borderRadius:8,padding:'9px 13px',color:'#fff',fontWeight:700,cursor:'pointer',font:'inherit'},
   input:{width:'100%',boxSizing:'border-box',borderRadius:8,padding:10,font:'inherit',margin:'8px 0'}
 };
-export default function ExamBiometricReviewDesk({supabase,currentUser,onBack}) {
+export default function ExamBiometricReviewDesk({supabase,currentUser,onBack,onPendingCountChange}) {
  const [rows,setRows]=useState([]),[loading,setLoading]=useState(true),[error,setError]=useState(''),[busy,setBusy]=useState(''),[notes,setNotes]=useState({}),[filter,setFilter]=useState('pending'),[images,setImages]=useState({});
  const load=useCallback(async()=>{
   setLoading(true);setError('');
   const {data,error:rpcError}=await supabase.rpc('list_exam_biometric_manual_reviews',{p_employee_id:Number(currentUser?.id)});
-  if(rpcError){setError(`تعذر تحميل طلبات مراجعة الوجه: ${rpcError.message}`);setRows([]);setLoading(false);return;}
-  const list=Array.isArray(data)?data:[];setRows(list);
+  if(rpcError){setError(`تعذر تحميل طلبات مراجعة الوجه: ${rpcError.message}`);setRows([]);onPendingCountChange?.(0);setLoading(false);return;}
+  const list=Array.isArray(data)?data:[];setRows(list);onPendingCountChange?.(list.filter(row=>row?.status==='pending').length);
   const liveImages={};
   for(const row of list){ if(row.live_image_data_url) liveImages[row.id]=row.live_image_data_url; }
   setImages(liveImages);setLoading(false);

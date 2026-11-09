@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useState } from "react";
 const LABELS={pending:"قيد الانتظار",approved:"تمت الموافقة",rejected:"مرفوض",needs_more_info:"بحاجة إلى استكمال"};
 const button={border:0,borderRadius:8,padding:"9px 12px",background:"#1e4f91",color:"white",fontWeight:700,cursor:"pointer",font:"inherit"};
-export default function RegistrationDesk({supabase,currentUser,canApprove,canReject}){
+export default function RegistrationDesk({supabase,currentUser,canApprove,canReject,onPendingCountChange}){
  const [rows,setRows]=useState([]),[loading,setLoading]=useState(true),[error,setError]=useState(""),[filter,setFilter]=useState("pending"),[notes,setNotes]=useState({}),[busy,setBusy]=useState(null);
- const load=useCallback(async()=>{setLoading(true);setError("");const {data,error:e}=await supabase.rpc("list_student_personal_data_change_requests",{p_employee_id:Number(currentUser?.id)});if(e)setError("تعذر جلب الطلبات: "+e.message);else setRows(data||[]);setLoading(false);},[supabase,currentUser?.id]);
+ const load=useCallback(async()=>{setLoading(true);setError("");const {data,error:e}=await supabase.rpc("list_student_personal_data_change_requests",{p_employee_id:Number(currentUser?.id)});if(e)setError("تعذر جلب الطلبات: "+e.message);else { const list = data || []; setRows(list); onPendingCountChange?.(list.filter(row => row?.status === 'pending').length); }setLoading(false);},[supabase,currentUser?.id]);
  useEffect(()=>{load();},[load]);
  const decide=async(row,decision)=>{const note=(notes[row.id]||"").trim();if((decision==="rejected"||decision==="needs_more_info")&&!note){setError("اكتب سبب الرفض أو تفاصيل الاستكمال أولاً.");return;}setBusy(row.id);setError("");const {error:e}=await supabase.rpc("review_student_personal_data_request",{p_request_id:row.id,p_employee_id:currentUser?.id,p_decision:decision,p_note:note||null});if(e)setError("تعذر تنفيذ القرار: "+e.message);else{await load();setNotes(old=>({...old,[row.id]:""}));}setBusy(null);};
  const visible=rows.filter(r=>filter==="all"||r.status===filter);

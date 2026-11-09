@@ -416,7 +416,9 @@ function AdminDashboard({
       .from('supervisors')
       .update({
         is_active: nextActive,
-        ...(nextActive ? {} : { is_online: false, last_seen: new Date().toISOString() })
+        // عند التفعيل نعيد فتح صلاحية الدخول أيضًا.
+        // عند التعطيل نغيّر is_active فقط وننهي حالة الاتصال.
+        ...(nextActive ? { access: true } : { is_online: false, last_seen: new Date().toISOString() })
       })
       .eq('id', employee.id);
 

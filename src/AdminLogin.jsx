@@ -22,6 +22,7 @@ import StudentResultsManager from './StudentResultsManager';
 import StudentResultView from './StudentResultView';
 import CheatingMonitor from './CheatingMonitor';
 import EssayGradingManager from './EssayGradingManager';
+import EssayGradingSupervisor from './EssayGradingSupervisor';
 import ResultAnnouncementManager from './result_announcements';
 import EmployeeMessages from './EmployeeMessages';
 import StudentSupportMessages from './StudentSupportMessages';
@@ -326,6 +327,22 @@ function EmployeeLogin({ supabase, onLoginSuccess, onBack }) {
 
       if (activityError) {
         console.warn('تعذر تحديث وقت الدخول:', activityError);
+      }
+
+      // إنشاء جلسة آمنة خاصة بصندوق دعم الطلاب (لا تعتمد على Supabase Auth).
+      try {
+        const { data: supportAuth, error: supportAuthError } = await supabase.functions.invoke('staff-support-api', {
+          body: { action: 'login', username: username.trim(), password }
+        });
+        if (!supportAuthError && supportAuth?.ok && supportAuth.token) {
+          localStorage.setItem('studentSupportStaffToken', supportAuth.token);
+        } else {
+          localStorage.removeItem('studentSupportStaffToken');
+          console.warn('تعذر إنشاء جلسة صندوق دعم الطلاب:', supportAuth?.error || supportAuthError?.message);
+        }
+      } catch (supportAuthError) {
+        localStorage.removeItem('studentSupportStaffToken');
+        console.warn('تعذر الاتصال بخدمة صندوق دعم الطلاب:', supportAuthError);
       }
 
       const loggedEmployee = {
@@ -745,8 +762,8 @@ function WelcomeScreen({ employeeName, roleTitle, onContinue }) {
         <div style={welcomeStyles.iconBg}>🎉</div>
         <h2 style={welcomeStyles.title}>مرحباً بك</h2>
         <p style={welcomeStyles.messageText}>
-          أهلاً وسهلاً بك، <span style={{ color: '#38bdf8', fontWeight: 'bold' }}>{employeeName}</span><br />
-          تم تسجيل الدخول بنجاح بصفتك (<span style={{ color: '#fbbf24' }}>{roleTitle}</span>)
+          أهلاً وسهلاً بك عزيزي الموظف / <span style={{ color: '#38bdf8', fontWeight: 'bold' }}>{employeeName}</span><br />
+          بصفتك: <span style={{ color: '#fbbf24', fontWeight: 'bold' }}>{roleTitle}</span>
         </p>
         <div style={welcomeStyles.timerBox}>
           <div
@@ -1162,6 +1179,34 @@ export default function AdminPanel({ supabase, styles, showAlertMessage, onLogou
   );
   const [employeeUnreadCount, setEmployeeUnreadCount] = useState(0);
   const [studentSupportUnreadCount, setStudentSupportUnreadCount] = useState(0);
+  const [registrarCounts, setRegistrarCounts] = useState({ data: 0, registrationPhotos: 0, examFaces: 0 });
+
+  // عدّادات المسجل: تُحسب من نفس قوائم المراجعة التي تستخدمها الشاشات،
+  // وتُحدّث دوريًا حتى لا تعتمد على أرقام ثابتة في الواجهة.
+  useEffect(() => {
+    if (!supabase || !isLoggedIn || !currentUser?.id) return;
+    let active = true;
+    const loadRegistrarCounts = async () => {
+      const employeeId = Number(currentUser.id);
+      const calls = await Promise.all([
+        supabase.rpc('list_student_personal_data_change_requests', { p_employee_id: employeeId }),
+        supabase.rpc('list_student_registration_manual_reviews', { p_employee_id: employeeId }),
+        supabase.rpc('list_exam_biometric_manual_reviews', { p_employee_id: employeeId })
+      ]);
+      if (!active) return;
+      const countPending = (result) => result.error ? null :
+        (Array.isArray(result.data) ? result.data.filter(row => row?.status === 'pending').length : 0);
+      setRegistrarCounts(previous => ({
+        data: countPending(calls[0]) ?? previous.data,
+        registrationPhotos: countPending(calls[1]) ?? previous.registrationPhotos,
+        examFaces: countPending(calls[2]) ?? previous.examFaces
+      }));
+    };
+    loadRegistrarCounts();
+    const timer = setInterval(loadRegistrarCounts, 15000);
+    return () => { active = false; clearInterval(timer); };
+  }, [supabase, isLoggedIn, currentUser?.id]);
+
 
   useEffect(() => {
     if (!supabase || !isLoggedIn || !currentUser?.id) return;
@@ -1179,21 +1224,7 @@ export default function AdminPanel({ supabase, styles, showAlertMessage, onLogou
     return () => clearInterval(timer);
   }, [supabase, isLoggedIn, currentUser?.id]);
 
-  useEffect(() => {
-    if (!supabase || !isLoggedIn || !currentUser?.id || !hasPermission('student_support_messaging')) return;
-    const loadSupportUnread = async () => {
-      const { count, error } = await supabase
-        .from('student_support_messages')
-        .select('id', { count: 'exact', head: true })
-        .eq('sender_type', 'student')
-        .eq('is_read', false)
-        .is('recipient_deleted_at', null);
-      if (!error) setStudentSupportUnreadCount(Number(count || 0));
-    };
-    loadSupportUnread();
-    const timer = setInterval(loadSupportUnread, 15000);
-    return () => clearInterval(timer);
-  }, [supabase, isLoggedIn, currentUser?.id, permissions]);
+  // عداد دعم الطلاب يُحدّث من نفس قائمة صندوق الوارد داخل StudentSupportMessages.
 
   const [openMenus, setOpenMenus] = useState({ 
     questions: hasPermission('view_questions') || hasPermission('add_question'),
@@ -1243,6 +1274,7 @@ export default function AdminPanel({ supabase, styles, showAlertMessage, onLogou
       }
     }
 
+    localStorage.removeItem('studentSupportStaffToken');
     localStorage.removeItem('currentUserId');
     localStorage.removeItem('currentUsername');
     localStorage.removeItem('currentUserRole');
@@ -1279,8 +1311,13 @@ export default function AdminPanel({ supabase, styles, showAlertMessage, onLogou
   }
 
   if (showWelcome) {
-    const employeeFullName = currentUser?.name || localStorage.getItem('currentName') || 'الموظف';
-    const employeeRoleTitle = getRoleTitle(userRole);
+    const storedFullName = currentUser?.full_name || currentUser?.name || localStorage.getItem('currentName') || 'الموظف';
+    const nameParts = String(storedFullName).trim().split(/\s+/).filter(Boolean);
+    const employeeFullName = nameParts.length > 1
+      ? `${nameParts[0]} ${nameParts[nameParts.length - 1]}`
+      : (nameParts[0] || 'الموظف');
+    // عرض المسمى الوظيفي الفعلي المسجل للموظف، لا الدور العام للنظام.
+    const employeeRoleTitle = String(currentUser?.job_name || localStorage.getItem('currentJobName') || '').trim() || getRoleTitle(userRole);
     return (
       <WelcomeScreen 
         employeeName={employeeFullName} 
@@ -1378,10 +1415,9 @@ export default function AdminPanel({ supabase, styles, showAlertMessage, onLogou
   return (
     <div style={{ color: '#fff', fontFamily: 'Noto Kufi Arabic, sans-serif', backgroundColor: '#0f172a', minHeight: '100vh', display: 'flex', flexDirection: 'column' }} dir="rtl">
       
-      {/* الترويسة العلوية Header */}
-      <header className="staff-dashboard-header" style={{ backgroundColor: '#1e293b', borderBottom: '1px solid #334155', padding: '15px 30px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', minHeight: '120px' }}>
-        
-        <div style={{ fontSize: '22px', fontFamily: 'Amiri, Traditional Arabic, serif', fontWeight: 'bold', color: '#fbbf24', textAlign: 'center', width: '100%', letterSpacing: '1px' }}>
+      {/* الترويسة العلوية - مطابقة للتصميم المرجعي */}
+      <header className="staff-dashboard-header" dir="rtl">
+        <div className="staff-dashboard-bismillah">
           بسم الله الرحمن الرحيم
         </div>
 
@@ -1395,37 +1431,39 @@ export default function AdminPanel({ supabase, styles, showAlertMessage, onLogou
           ☰
         </button>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', borderTop: '1px solid #334155', paddingTop: '10px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-               <img src={institution?.logo_url || ministryLogo} alt="Logo" style={{ width: '45px', height: '45px', objectFit: 'cover', borderRadius: '50%' }} />
- 
-               <div>
-                 <h4 style={{ margin: '0', color: '#f8fafc', fontSize: '13px', fontWeight: 'bold' }}>{(institution?.name_line_1 || institution?.name || institution?.official_name || '')}</h4>
-                 <p style={{ margin: '2px 0 0 0', color: '#94a3b8', fontSize: '11px', fontWeight: 'bold' }}>
-                   قسم القياس والتقويم والامتحانات - امتحان إتمام شهادة الدراسة الثانوية العامة - {currentServerYear}
-                 </p>
-               </div>
+        <div className="staff-dashboard-brand-row">
+          <div className="staff-dashboard-brand">
+            <img
+              src={institution?.logo_url || ministryLogo}
+              alt="شعار المؤسسة"
+              onError={(event) => { event.currentTarget.src = ministryLogo; }}
+            />
+            <div>
+              <h4>{institution?.name_line_1 || institution?.name || institution?.official_name || 'دولة فلسطين'}</h4>
+              <p>
+                قسم القياس والتقويم والامتحانات - امتحان إتمام شهادة الدراسة الثانوية العامة - {currentServerYear}
+              </p>
+            </div>
           </div>
+        </div>
 
-          <div className="staff-dashboard-title" style={{ fontSize: '19px', fontWeight: 'bold', color: '#38bdf8', textAlign: 'center', width: '100%' }}>
-            لوحة تحكم الموظفين
-          </div>
-
-          <div className="staff-dashboard-user-actions" style={{ display: 'flex', gap: '10px', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', width: '100%' }}>
-            <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#cbd5e1' }}>
-              مرحباً، {currentUser?.name || localStorage.getItem('currentName') || 'الموظف'}
-              {' - '}
-              {getRoleTitle(userRole)}
-            </span>
-            <button type="button" onClick={handleHomeClick} style={{ padding: '6px 12px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold' }}>
-              🏠 الرئيسية
-            </button>
-            <button type="button" onClick={handleLogoutClick} style={{ padding: '6px 12px', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold' }}>
+        <div className="staff-dashboard-user-actions">
+          <span>
+            مرحباً، {currentUser?.name || localStorage.getItem('currentName') || 'الموظف'}
+            {' - '}
+            {currentUser?.job_name || localStorage.getItem('currentJobName') || getRoleTitle(userRole)}
+          </span>
+          <div className="staff-dashboard-buttons">
+            <button type="button" onClick={handleLogoutClick} className="staff-dashboard-logout-button">
               تسجيل الخروج
+            </button>
+            <button type="button" onClick={handleHomeClick} className="staff-dashboard-home-button">
+              🏠 الرئيسية
             </button>
           </div>
         </div>
 
+        <div className="staff-dashboard-title">لوحة تحكم الموظفين</div>
       </header>
 
       {/* المحتوى والقائمة الجانبية */}
@@ -1453,8 +1491,6 @@ export default function AdminPanel({ supabase, styles, showAlertMessage, onLogou
             <span className="sidebar-employee-avatar">👤</span>
             <div>
               <strong>{currentUser?.name || localStorage.getItem('currentName') || 'الموظف'}</strong>
-              <small>{getRoleTitle(userRole)}</small>
-
               <small>{currentUser?.job_name || localStorage.getItem('currentJobName') || getRoleTitle(userRole)}</small>
 
             </div>
@@ -1583,9 +1619,15 @@ export default function AdminPanel({ supabase, styles, showAlertMessage, onLogou
               </button>
             )}
 
-            {(userRole === 'Grader' || canAccess('grade_essays')) && (
+            {canAccess('grade_essays') && (
               <button type="button" onClick={() => setActiveTab('essay_grading')} style={mainItemStyle(activeTab === 'essay_grading')}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>📝 تصحيح الأسئلة المقالية</span>
+              </button>
+            )}
+
+            {canAccess('manage_essay_grading') && (
+              <button type="button" onClick={() => setActiveTab('essay_grading_supervisor')} style={mainItemStyle(activeTab === 'essay_grading_supervisor')}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>📋 إدارة التصحيح وتوزيع الأوراق</span>
               </button>
             )}
 
@@ -1605,10 +1647,10 @@ export default function AdminPanel({ supabase, styles, showAlertMessage, onLogou
             )}
 
             {canAccess('student_support_messaging') && (
-              <button type="button" onClick={() => { setActiveTab('student_support_messages'); setStudentSupportUnreadCount(0); }} style={mainItemStyle(activeTab === 'student_support_messages')}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <button type="button" onClick={() => { setActiveTab('student_support_messages'); }} style={mainItemStyle(activeTab === 'student_support_messages')}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   🎧 مراسلات الطلاب (دعم فني)
-                  {studentSupportUnreadCount > 0 && <span style={{ minWidth: 20, height: 20, padding: '0 6px', borderRadius: 999, background: '#ef4444', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 900 }}>{studentSupportUnreadCount > 99 ? '99+' : studentSupportUnreadCount}</span>}
+                  <span aria-label="عدد الرسائل غير المقروءة" style={{ color: '#ef4444', fontWeight: 1000, direction: 'ltr', whiteSpace: 'nowrap' }}>({studentSupportUnreadCount > 99 ? '99+' : studentSupportUnreadCount})</span>
                 </span>
               </button>
             )}
@@ -1631,19 +1673,19 @@ export default function AdminPanel({ supabase, styles, showAlertMessage, onLogou
 
             {canAccess('view_registration_requests') && (
               <button type="button" onClick={() => setActiveTab('registration_desk')} style={mainItemStyle(activeTab === 'registration_desk')}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>🗂️ طلبات تسجيل الطلاب</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>📁 طلبات تسجيل الطلاب <b style={{ color: '#ef4444', fontWeight: 900 }}>({registrarCounts.data})</b></span>
               </button>
             )}
 
             {(String(currentUser?.job_name || '').trim() === 'مسجل' || userRole === 'Admin' || canAccess('review_registration_photos')) && (
               <button type="button" onClick={() => setActiveTab('manual_photo_reviews')} style={mainItemStyle(activeTab === 'manual_photo_reviews')}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>🖼️ مراجعة صور التسجيل</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>🖼️ مراجعة صور التسجيل <b style={{ color: '#ef4444', fontWeight: 900 }}>({registrarCounts.registrationPhotos})</b></span>
               </button>
             )}
 
             {(Number(currentUser?.job_id) === 9 || String(currentUser?.job_name || '').trim() === 'مسجل' || userRole === 'Admin' || canAccess('review_exam_biometric')) && (
               <button type="button" onClick={() => setActiveTab('exam_biometric_reviews')} style={mainItemStyle(activeTab === 'exam_biometric_reviews')}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>🧑‍⚖️ مراجعة التحقق من وجه الامتحان</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>🧑‍🎓 مراجعة التحقق من وجه الامتحان <b style={{ color: '#ef4444', fontWeight: 900 }}>({registrarCounts.examFaces})</b></span>
               </button>
             )}
 
@@ -1794,8 +1836,14 @@ export default function AdminPanel({ supabase, styles, showAlertMessage, onLogou
           )}
 
           {activeTab === 'essay_grading' && (
-            (userRole === 'Grader' || canAccess('grade_essays'))
+            canAccess('grade_essays')
               ? <EssayGradingManager supabase={supabase} onBack={handleHomeClick} />
+              : <RestrictedView onBack={handleHomeClick} currentName={currentUser?.name} roleTitle={getRoleTitle(userRole)} />
+          )}
+
+          {activeTab === 'essay_grading_supervisor' && (
+            canAccess('manage_essay_grading')
+              ? <EssayGradingSupervisor supabase={supabase} currentUser={currentUser} onBack={handleHomeClick} />
               : <RestrictedView onBack={handleHomeClick} currentName={currentUser?.name} roleTitle={getRoleTitle(userRole)} />
           )}
 
@@ -1813,7 +1861,7 @@ export default function AdminPanel({ supabase, styles, showAlertMessage, onLogou
 
           {activeTab === 'student_support_messages' && (
             canAccess('student_support_messaging')
-              ? <StudentSupportMessages supabase={supabase} styles={styles} showAlertMessage={showAlertMessage} />
+              ? <StudentSupportMessages supabase={supabase} styles={styles} showAlertMessage={showAlertMessage} onUnreadCountChange={setStudentSupportUnreadCount} />
               : <RestrictedView onBack={handleHomeClick} currentName={currentUser?.name} roleTitle={getRoleTitle(userRole)} />
           )}
 
@@ -1855,19 +1903,19 @@ export default function AdminPanel({ supabase, styles, showAlertMessage, onLogou
 
           {activeTab === 'registration_desk' && (
             canAccess('view_registration_requests')
-              ? <RegistrationDesk supabase={supabase} currentUser={currentUser} canApprove={canAccess('approve_registration_requests')} canReject={canAccess('reject_registration_requests')} />
+              ? <RegistrationDesk supabase={supabase} currentUser={currentUser} canApprove={canAccess('approve_registration_requests')} canReject={canAccess('reject_registration_requests')} onPendingCountChange={(count) => setRegistrarCounts(previous => ({ ...previous, data: count }))} />
               : <RestrictedView onBack={handleHomeClick} currentName={currentUser?.name} roleTitle={getRoleTitle(userRole)} />
           )}
 
           {activeTab === 'manual_photo_reviews' && (
             (String(currentUser?.job_name || '').trim() === 'مسجل' || userRole === 'Admin' || canAccess('review_registration_photos'))
-              ? <ManualPhotoReviewDesk supabase={supabase} currentUser={currentUser} onBack={handleHomeClick} />
+              ? <ManualPhotoReviewDesk supabase={supabase} currentUser={currentUser} onBack={handleHomeClick} onPendingCountChange={(count) => setRegistrarCounts(previous => ({ ...previous, registrationPhotos: count }))} />
               : <RestrictedView onBack={handleHomeClick} currentName={currentUser?.name} roleTitle={getRoleTitle(userRole)} />
           )}
 
           {activeTab === 'exam_biometric_reviews' && (
             (Number(currentUser?.job_id) === 9 || String(currentUser?.job_name || '').trim() === 'مسجل' || userRole === 'Admin' || canAccess('review_exam_biometric'))
-              ? <ExamBiometricReviewDesk supabase={supabase} currentUser={currentUser} onBack={handleHomeClick} />
+              ? <ExamBiometricReviewDesk supabase={supabase} currentUser={currentUser} onBack={handleHomeClick} onPendingCountChange={(count) => setRegistrarCounts(previous => ({ ...previous, examFaces: count }))} />
               : <RestrictedView onBack={handleHomeClick} currentName={currentUser?.name} roleTitle={getRoleTitle(userRole)} />
           )}
 

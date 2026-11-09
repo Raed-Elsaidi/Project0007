@@ -257,9 +257,8 @@ export default function ManageExam({ supabase, showAlertMessage, supervisor }) {
 
   // =========================================================
   // مزامنة is_active حسب وقت الامتحان
-  // - قبل البداية بـ5 دقائق وحتى النهاية: true
+  // - قبل البداية بـ10 دقائق وحتى النهاية: true (نافذة التحقق البيومتري)
   // - بعد النهاية: false
-  // - الامتحانات الأبعد من 5 دقائق تبقى كما هي
   // - لا نغيّر access_enabled هنا لأنه تحكم إداري
   // =========================================================
   const syncExamActiveStatus = async (examList) => {
@@ -275,7 +274,7 @@ export default function ManageExam({ supabase, showAlertMessage, supervisor }) {
         continue;
       }
 
-      const verificationStart = new Date(start.getTime() - 5 * 60 * 1000);
+      const verificationStart = new Date(start.getTime() - 10 * 60 * 1000);
       const shouldBeActive = now >= verificationStart && now < end;
       const shouldBeInactive = now >= end;
 

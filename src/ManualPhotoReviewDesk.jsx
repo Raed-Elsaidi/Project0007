@@ -6,7 +6,7 @@ const ui = {
   input: { width: '100%', boxSizing: 'border-box', borderRadius: 8, padding: 10, font: 'inherit', margin: '8px 0' }
 };
 
-export default function ManualPhotoReviewDesk({ supabase, currentUser, onBack }) {
+export default function ManualPhotoReviewDesk({ supabase, currentUser, onBack, onPendingCountChange }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState('');
@@ -20,7 +20,7 @@ export default function ManualPhotoReviewDesk({ supabase, currentUser, onBack })
       p_employee_id: Number(currentUser?.id)
     });
     if (rpcError) setError(`تعذر تحميل طلبات الصور: ${rpcError.message}`);
-    else setRows(Array.isArray(data) ? data : []);
+    else { const list = Array.isArray(data) ? data : []; setRows(list); onPendingCountChange?.(list.filter(row => row?.status === 'pending').length); }
     setLoading(false);
   }, [supabase, currentUser?.id]);
 
